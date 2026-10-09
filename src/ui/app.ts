@@ -680,7 +680,7 @@ async function start(data?: Hot['data']): Promise<void> {
     const t = e.target as HTMLElement | null;
     if (t?.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (document.getElementById('confirm-modal')) return;
-    const btn = document.querySelector<HTMLButtonElement>('.btn.continue');
+    const btn = document.querySelector<HTMLButtonElement>('.btn.continue, .rail-go');
     if (!game || !btn || btn.disabled) return;
     e.preventDefault();
     btn.click();

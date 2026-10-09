@@ -568,27 +568,25 @@ export function tacticsBoard(ctx: Ctx): string {
   const benchExtra = c.bench ? ' <button class="link small" data-act="bench-auto">Let the assistant pick</button>' : ' <span class="small-note">(assistant\'s picks)</span>';
   const benchHtml = benchRow(bench.map((id) => g.players[id]), c.colours, { sel: bsel, drop: true, act: 'bench-slot', extra: benchExtra });
   const sheet = tacticsSheet(ctx, xi, bench, sel, bsel);
+  // The same pieces make up both layouts, so nothing is lost by turning the phone.
+  const formRow = `<div class="instr-row"><label for="formation"><b>Formation</b></label><select class="cm" id="formation" data-change="formation">${formations}</select>${ments}</div>`;
+  const pickActions = `<div class="row-btns pick-actions">${c.lineup ? '<button class="btn" data-act="autopick">Let the assistant pick</button>' : '<button class="btn" data-act="keep-xi">Use this XI as my team</button>'}<button class="btn ghost" data-act="unpick-all" title="Empty the XI and the bench so you can pick everyone yourself">Unpick all players</button>${sel !== null || bsel !== null ? '<button class="btn ghost" data-act="slot-cancel">Cancel</button>' : ''}</div>`;
+  const pitchHtml = `<div class="pitch">${tokens}${runCtl}<span class="pitch-line half"></span><span class="pitch-circle"></span><span class="pitch-box top"></span><span class="pitch-box bottom"></span></div>`;
+  const runLegend = `<p class="legend runleg"><span class="runkey">${ARROW_BALL}</span><span>runs with the ball</span><span class="runkey">${ARROW_OFF}</span><span>forward runs without it</span><span class="small-note desk-only">Click the arrows above a shirt to switch them on.</span><span class="small-note mob-only">Tap a shirt to change the player or set his runs.</span>${Object.values(c.runs ?? {}).some((r) => r.ball || r.off) ? '<button class="link small" data-act="run-clear">Clear all arrows</button>' : ''}</p>`;
+  const fitLegend = `<p class="legend"><i class="nat">Green</i> natural position · <i class="acc">Amber</i> accomplished (small penalty) · <i class="awk">Red</i> out of position (big penalty)</p>`;
+  const instrBlock = `<div class="instr"><span class="sub-head" style="grid-column:1/-1;padding:0 0 4px">Team instructions</span>${instr}<p class="instr-note">${INSTRUCTIONS.map((i) => `<b>${i.label}:</b> ${i.note}`).join(' ')}</p></div>`;
+  const pickerTable = `<table class="grid compact picker-table"><thead><tr><th></th><th class="${pickDir && pickCol === 'picked' ? 'sorted' : ''}" title="Sort by selection: XI (keeper to attackers), then substitutes"><button data-act="pick-sort">Picked${pickDir && pickCol === 'picked' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>Name</th><th class="n" title="Condition">Con</th><th class="${pickDir && pickCol === 'pos' ? 'sorted' : ''}" title="Natural positions: sort keeper to strikers"><button data-act="pos-sort">Pos${pickDir && pickCol === 'pos' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>${slotPos ? `At ${slotPos}` : 'Ability'}</th><th class="n hide-xs" title="Match sharpness">Sharp</th><th class="r" title="Substitutes">Sub</th></tr></thead><tbody>${list}</tbody></table>`;
   if (landscape()) {
-    // Landscape phones: the pitch on its side, and beside it the shape controls and three tabs.
+    // Landscape phones: the pitch on its side. Beside it the shape and the pick buttons (always on show), then three tabs.
     const tab = ctx.ui.tacTab ?? 'squad';
     const tb = (k: 'squad' | 'bench' | 'shape', label: string) => `<button class="lt-tab${tab === k ? ' on' : ''}" data-act="tac-tab" data-t="${k}" role="tab" aria-selected="${tab === k}">${label}</button>`;
-    const pick = `<div class="row-btns pick-actions">${c.lineup ? '<button class="btn" data-act="autopick">Let the assistant pick</button>' : '<button class="btn" data-act="keep-xi">Use this XI as my team</button>'}<button class="btn ghost" data-act="unpick-all" title="Empty the XI and the bench so you can pick everyone yourself">Unpick all</button></div>`;
-    const lsHint = sel !== null
-      ? `Pick a player for <b>${f.slots[sel]}</b>, best first.`
-      : bsel !== null ? 'Pick a player for the bench.' : `${c.lineup ? '<b>Your XI.</b>' : '<b>Assistant\'s XI.</b>'} Drag a player onto a shirt, or tap a shirt.`;
-    const pane = tab === 'bench'
-      ? `${benchHtml}${pick}`
-      : tab === 'shape'
-        ? `${pick}<p class="legend runleg"><span class="runkey">${ARROW_BALL}</span><span>runs with the ball</span><span class="runkey">${ARROW_OFF}</span><span>forward runs without it</span><span class="small-note">Tap a shirt to change the player or set his runs.</span>${Object.values(c.runs ?? {}).some((r) => r.ball || r.off) ? '<button class="link small" data-act="run-clear">Clear all arrows</button>' : ''}</p>
-          <p class="legend"><i class="nat">Green</i> natural · <i class="acc">Amber</i> accomplished · <i class="awk">Red</i> out of position</p>
-          <div class="instr"><span class="sub-head" style="grid-column:1/-1;padding:0 0 4px">Team instructions</span>${instr}<p class="instr-note">${INSTRUCTIONS.map((i) => `<b>${i.label}:</b> ${i.note}`).join(' ')}</p></div>`
-        : `<p class="hint">${lsHint}</p><table class="grid compact picker-table"><thead><tr><th></th><th class="${pickDir && pickCol === 'picked' ? 'sorted' : ''}"><button data-act="pick-sort">Sel${pickDir && pickCol === 'picked' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>Name</th><th class="n" title="Condition">Con</th><th class="${pickDir && pickCol === 'pos' ? 'sorted' : ''}"><button data-act="pos-sort">Pos${pickDir && pickCol === 'pos' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>${slotPos ? `At ${slotPos}` : 'Ability'}</th><th class="n hide-xs">Sharp</th><th class="r">Sub</th></tr></thead><tbody>${list}</tbody></table>`;
+    const pane = tab === 'bench' ? benchHtml : tab === 'shape' ? `${runLegend}${fitLegend}${instrBlock}` : `<p class="hint">${hint}</p>${pickerTable}`;
     return `<div class="tactics tac-ls">
-        <div class="tac-pitch"><div class="pitch-h"><div class="pitch">${tokens}${runCtl}<span class="pitch-line half"></span><span class="pitch-circle"></span><span class="pitch-box top"></span><span class="pitch-box bottom"></span></div></div></div>
-        <div class="tac-side">
-          <div class="tac-head"><label class="sr-only" for="formation">Formation</label><select class="cm" id="formation" data-change="formation">${formations}</select>${ments}</div>
-          <div class="lt-tabs" role="tablist" aria-label="Tactics">${tb('squad', 'Squad')}${tb('bench', `Bench (${bench.length})`)}${tb('shape', 'Shape')}</div>
-          <div class="tac-pane" data-keep-scroll="tac-${tab}">${pane}</div>
+        <div class="tac-pitch"><div class="pitch-h">${pitchHtml}</div></div>
+        <div class="tac-side" data-keep-scroll="tac-${tab}">
+          <div class="tac-head">${formRow}${pickActions}</div>
+          <div class="lt-tabs" role="tablist" aria-label="Tactics">${tb('squad', 'Squad')}${tb('bench', `Bench (${bench.length})`)}${tb('shape', 'Shape &amp; instructions')}</div>
+          <div class="tac-pane">${pane}</div>
         </div>
         ${sheet}
       </div>`;
@@ -597,18 +595,18 @@ export function tacticsBoard(ctx: Ctx): string {
     <div class="tactics">
       <div class="pitch-wrap">
         <div class="controls">
-          <div class="instr-row"><label for="formation"><b>Formation</b></label><select class="cm" id="formation" data-change="formation">${formations}</select>${ments}</div>
-        <div class="row-btns pick-actions">${c.lineup ? '<button class="btn" data-act="autopick">Let the assistant pick</button>' : '<button class="btn" data-act="keep-xi">Use this XI as my team</button>'}<button class="btn ghost" data-act="unpick-all" title="Empty the XI and the bench so you can pick everyone yourself">Unpick all players</button>${sel !== null || bsel !== null ? '<button class="btn ghost" data-act="slot-cancel">Cancel</button>' : ''}</div>
+          ${formRow}
+        ${pickActions}
         </div>
-        <div class="pitch">${tokens}${runCtl}<span class="pitch-line half"></span><span class="pitch-circle"></span><span class="pitch-box top"></span><span class="pitch-box bottom"></span></div>
-        <p class="legend runleg"><span class="runkey">${ARROW_BALL}</span><span>runs with the ball</span><span class="runkey">${ARROW_OFF}</span><span>forward runs without it</span><span class="small-note desk-only">Click the arrows above a shirt to switch them on.</span><span class="small-note mob-only">Tap a shirt to change the player or set his runs.</span>${Object.values(c.runs ?? {}).some((r) => r.ball || r.off) ? '<button class="link small" data-act="run-clear">Clear all arrows</button>' : ''}</p>
-        <p class="legend"><i class="nat">Green</i> natural position · <i class="acc">Amber</i> accomplished (small penalty) · <i class="awk">Red</i> out of position (big penalty)</p>
+        ${pitchHtml}
+        ${runLegend}
+        ${fitLegend}
         ${benchHtml}
-        <div class="instr"><span class="sub-head" style="grid-column:1/-1;padding:0 0 4px">Team instructions</span>${instr}<p class="instr-note">${INSTRUCTIONS.map((i) => `<b>${i.label}:</b> ${i.note}`).join(' ')}</p></div>
+        ${instrBlock}
       </div>
       <div class="picker">
         <p class="hint">${hint}</p>
-        <div class="scroll"><table class="grid compact picker-table"><thead><tr><th></th><th class="${pickDir && pickCol === 'picked' ? 'sorted' : ''}" title="Sort by selection: XI (keeper to attackers), then substitutes"><button data-act="pick-sort">Picked${pickDir && pickCol === 'picked' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>Name</th><th class="n" title="Condition">Con</th><th class="${pickDir && pickCol === 'pos' ? 'sorted' : ''}" title="Natural positions: sort keeper to strikers"><button data-act="pos-sort">Pos${pickDir && pickCol === 'pos' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>${slotPos ? `At ${slotPos}` : 'Ability'}</th><th class="n hide-xs" title="Match sharpness">Sharp</th><th class="r" title="Substitutes">Sub</th></tr></thead><tbody>${list}</tbody></table></div>
+        <div class="scroll">${pickerTable}</div>
       </div>
       ${sheet}
     </div>`;

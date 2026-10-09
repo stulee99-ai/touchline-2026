@@ -1110,7 +1110,7 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
 .ls .next { margin: 6px 8px; padding: 5px 10px; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; }
 .ls .next-label { font-size: 10.5px; }
 .ls .next-main { font-size: 14px; }
-.ls .next-meta { font-size: 11.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls .next-meta { font-size: 11.5px; }
 .ls .pad-top { padding: 4px 8px 4px; }
 .ls .todo { margin: 6px 8px; }
 
@@ -1170,16 +1170,18 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
 .ls .ls-fill > .tactics.tac-ls { flex: 1 1 0; height: auto; min-height: 220px; }
 .tac-ls .tac-pitch { height: 100%; min-height: 0; flex: none; display: flex; }
 .tac-ls .tac-side { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--row); border: 1px solid #000; }
-.tac-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 5px 6px; background: var(--head); }
+.tac-head { flex: none; display: grid; gap: 4px; padding: 5px 6px; background: var(--head); }
+.tac-head .instr-row { gap: 4px 6px; }
+.tac-head .pick-actions { margin: 0; gap: 4px; flex-wrap: wrap; }
+.tac-head .pick-actions .btn { padding: 3px 8px; font-size: 11.5px; min-height: 28px; flex: 1 1 auto; }
 .tac-head select.cm { min-height: 28px; }
 .tac-head .segs .seg { padding: 4px 7px; font-size: 11.5px; }
-.tac-pane { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 6px; }
-.tac-pane .hint { margin: 4px 6px; font-size: 11.5px; }
+.tac-pane { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 0 6px; }
+.tac-pane .hint { margin: 4px 6px; font-size: 11px; line-height: 1.3; }
 .tac-pane .bench-row { margin: 6px; }
 .tac-pane .pick-actions { margin: 6px; }
 .tac-pane .legend { margin: 6px; }
 .tac-pane .instr { margin: 6px; }
-.tac-ls .picker-table th:nth-child(7), .tac-ls .picker-table td:nth-child(7) { display: none; }
 .tac-ls .picker-table td.pname { white-space: normal; }
 .tac-ls .picker-table td, .tac-ls .picker-table th { padding-left: 3px; padding-right: 3px; }
 .tac-ls .picker-table .stars { font-size: 10.5px; letter-spacing: 0; }
@@ -1227,3 +1229,14 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
   .ls .ls-live-left .lm-stage { min-height: 52px; }
 }
 .more-menu .search-results { left: 0; right: 0; width: auto; }
+
+/* The opposition's shape, upright and small, in the landscape match tactics column */
+.lt-ls .opp-pitch .pitch.small { max-width: 200px; }
+.tac-head .pick-actions { flex-wrap: nowrap; }
+.tac-head .pick-actions .btn { flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.15; padding: 3px 6px; }
+.tac-ls .tac-pane .hint { display: none; } /* as on portrait phones: the swap list explains itself */
+/* The side column scrolls as one (controls, then the list), with the tabs pinned at the top */
+.tac-ls .tac-side { overflow: auto; overscroll-behavior: contain; display: block; }
+.tac-ls .tac-pane { overflow: visible; min-height: 0; }
+.tac-ls .lt-tabs { position: sticky; top: 0; z-index: 3; }
+@media (max-height: 380px) { .ls .tac-ls .pitch-h { max-width: 50vw; } }

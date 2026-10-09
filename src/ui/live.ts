@@ -557,35 +557,40 @@ function tacticsView(ctx: Ctx): string {
         ? 'Drag a substitute onto a shirt to bring him on, or drag one shirt onto another to swap positions. Clicking works too.'
         : 'Drag one shirt onto another to swap positions.';
   const benchHtml = benchRow(bench, me.colours, { sel: L.selBench, drop: false, act: canSub ? 'lt-bench' : undefined, count: subsStatus(sim, L.side) });
+  // The same pieces make up both layouts, so nothing is lost by turning the phone.
+  const formRow = `<div class="instr-row"><label for="lt-formation"><b>Formation</b></label><select class="cm" id="lt-formation" data-change="live-formation">${formations}</select>
+          <div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div></div>`;
+  const pitch = livePitch(sim, L.side, me, true, L.selSlot, L.incident?.playerId ?? null);
+  const legend = `<p class="legend"><i>White</i> natural position · <i class="acc">Green</i> accomplished · <i class="awk">Red</i> out of position · <i class="awk">✚</i> injured</p>`;
+  const instrCol = `<div class="lm-col"><h4>TEAM INSTRUCTIONS</h4><div class="instr compact">${instr}</div></div>`;
+  const oppCol = `<div class="lm-col"><h4>OPPOSITION · ${esc(opp.name.toUpperCase())}</h4>${oppSummary(sim, oppSide)}<div class="opp-pitch">${livePitch(sim, oppSide, opp, false, null, null)}</div><p class="small-note opp-bench">${oppBench(sim, oppSide)}</p></div>`;
   if (landscape()) {
     // The pitch on its side on the left; everything else in a column that scrolls beside it.
     return `<div class="live-tactics lt-ls">
-        <div class="lt-pitch"><div class="pitch-h">${livePitch(sim, L.side, me, true, L.selSlot, L.incident?.playerId ?? null)}</div></div>
+        <div class="lt-pitch"><div class="pitch-h">${pitch}</div></div>
         <div class="lt-side" data-keep-scroll="lt-side">
-          <div class="instr-row"><label for="lt-formation"><b>Formation</b></label><select class="cm" id="lt-formation" data-change="live-formation">${formations}</select>
-            <div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div></div>
+          ${formRow}
           <p class="hint">${hint}</p>
           ${planHtml()}
           ${benchHtml}
-          <p class="legend"><i>White</i> natural · <i class="acc">Green</i> accomplished · <i class="awk">Red</i> out of position</p>
-          <div class="lm-col"><h4>TEAM INSTRUCTIONS</h4><div class="instr compact">${instr}</div></div>
-          <div class="lm-col"><h4>OPPOSITION · ${esc(opp.name.toUpperCase())}</h4>${oppSummary(sim, oppSide)}<p class="small-note opp-bench">${oppBench(sim, oppSide)}</p></div>
+          ${legend}
+          ${instrCol}
+          ${oppCol}
         </div>
       </div>`;
   }
   return `<div class="live-tactics">
       <div class="lt-main">
-        <div class="instr-row"><label for="lt-formation"><b>Formation</b></label><select class="cm" id="lt-formation" data-change="live-formation">${formations}</select>
-          <div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div></div>
+        ${formRow}
         <p class="hint">${hint}</p>
-        ${livePitch(sim, L.side, me, true, L.selSlot, L.incident?.playerId ?? null)}
-        <p class="legend"><i>White</i> natural position · <i class="acc">Green</i> accomplished · <i class="awk">Red</i> out of position · <i class="awk">✚</i> injured</p>
+        ${pitch}
+        ${legend}
         ${planHtml()}
         ${benchHtml}
       </div>
       <div class="lt-side">
-        <div class="lm-col"><h4>TEAM INSTRUCTIONS</h4><div class="instr compact">${instr}</div></div>
-        <div class="lm-col"><h4>OPPOSITION · ${esc(opp.name.toUpperCase())}</h4>${oppSummary(sim, oppSide)}<div class="opp-pitch">${livePitch(sim, oppSide, opp, false, null, null)}</div><p class="small-note opp-bench">${oppBench(sim, oppSide)}</p></div>
+        ${instrCol}
+        ${oppCol}
       </div>
     </div>`;
 }
@@ -669,9 +674,9 @@ function matchScreenLandscape(ctx: Ctx): string {
     right = `${oppSummary(sim, oppSide)}<table class="grid compact live-team"><tbody id="lm-team">${playerRows(sim, oppSide, null)}</tbody></table>
       <p class="small-note opp-bench" id="lm-opp-bench">${oppBench(sim, oppSide)}</p>`;
   } else if (L.panel === 'stats') {
-    right = `<div class="stats-block" id="lm-stats">${statsHtml(ctx, sim)}</div>`;
+    right = `<h4 class="ls-sub">MATCH STATS</h4><div class="stats-block" id="lm-stats">${statsHtml(ctx, sim)}</div>`;
   } else if (L.panel === 'scores') {
-    right = `<h4 class="ls-sub">${esc(compName(g, f.comp).toUpperCase())}</h4><ul class="others" id="lm-others">${othersHtml(ctx)}</ul>`;
+    right = `<h4 class="ls-sub">LATEST SCORES · ${esc(compName(g, f.comp).toUpperCase())}</h4><ul class="others" id="lm-others">${othersHtml(ctx)}</ul>`;
   } else {
     right = `<div class="ls-team-top"><div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div>
         ${sim.finished ? '' : instructionsHtml(sim, L.side)}</div>
