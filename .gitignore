@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.tmp.ts
+.DS_Store

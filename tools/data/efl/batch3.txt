@@ -1,0 +1,12 @@
+EN2 | Bolton Wanderers | target best-XI CA 117
+EN2 | Lincoln City | target best-XI CA 119
+EN2 | Queens Park Rangers | target best-XI CA 120
+EN2 | West Bromwich Albion | target best-XI CA 123
+EN3 | Oxford United | target best-XI CA 102
+EN3 | Blackpool | target best-XI CA 103
+EN3 | Doncaster Rovers | target best-XI CA 105
+EN3 | Cambridge United | target best-XI CA 101
+EN4 | Rotherham United | target best-XI CA 94
+EN4 | Chesterfield | target best-XI CA 89
+EN4 | Cheltenham Town | target best-XI CA 86
+EN4 | Newport County | target best-XI CA 88

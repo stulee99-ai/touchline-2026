@@ -1,0 +1,9 @@
+DE2 | VfL Bochum | target best-XI CA 116 | slug vfl-bochum
+DE2 | Darmstadt 98 | target best-XI CA 114 | slug darmstadt-98
+DE2 | 1. FC Magdeburg | target best-XI CA 114 | slug 1-fc-magdeburg
+DE2 | Arminia Bielefeld | target best-XI CA 113 | slug arminia-bielefeld
+DE2 | Greuther Fürth | target best-XI CA 112 | slug greuther-furth
+DE2 | Eintracht Braunschweig | target best-XI CA 111 | slug eintracht-braunschweig
+DE2 | Dynamo Dresden | target best-XI CA 110 | slug dynamo-dresden
+DE2 | Energie Cottbus | target best-XI CA 111 | slug energie-cottbus
+DE2 | VfL Osnabrück | target best-XI CA 107 | slug vfl-osnabruck

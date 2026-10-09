@@ -1,0 +1,10 @@
+IT2 | Hellas Verona | target best-XI CA 122 | slug hellas-verona
+IT2 | Pisa | target best-XI CA 121 | slug pisa
+IT2 | Cremonese | target best-XI CA 120 | slug cremonese
+IT2 | Sampdoria | target best-XI CA 116 | slug sampdoria
+IT2 | Palermo | target best-XI CA 119 | slug palermo
+IT2 | Empoli | target best-XI CA 117 | slug empoli
+IT2 | Modena | target best-XI CA 116 | slug modena
+IT2 | Cesena | target best-XI CA 114 | slug cesena
+IT2 | Catanzaro | target best-XI CA 112 | slug catanzaro
+IT2 | Südtirol | target best-XI CA 110 | slug sudtirol

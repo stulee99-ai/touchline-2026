@@ -1,0 +1,9 @@
+FR2 | Nantes | target best-XI CA 122 | slug nantes
+FR2 | Metz | target best-XI CA 113 | slug metz
+FR2 | Saint-Étienne | target best-XI CA 115 | slug saint-etienne
+FR2 | Montpellier | target best-XI CA 110 | slug montpellier
+FR2 | Reims | target best-XI CA 111 | slug reims
+FR2 | Guingamp | target best-XI CA 112 | slug guingamp
+FR2 | Annecy | target best-XI CA 106 | slug annecy
+FR2 | Clermont | target best-XI CA 111 | slug clermont
+FR2 | Dijon | target best-XI CA 106 | slug dijon

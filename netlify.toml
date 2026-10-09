@@ -1,0 +1,4 @@
+# Netlify builds the single-page game from source: dist/index.html is the whole game.
+[build]
+  command = "npm install && npm run build"
+  publish = "dist"

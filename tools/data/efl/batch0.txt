@@ -1,0 +1,12 @@
+EN2 | Cardiff City | target best-XI CA 118
+EN2 | Norwich City | target best-XI CA 120
+EN2 | Stoke City | target best-XI CA 124
+EN2 | Wrexham | target best-XI CA 122
+EN3 | Wigan Athletic | target best-XI CA 100
+EN3 | Peterborough United | target best-XI CA 103
+EN3 | Mansfield Town | target best-XI CA 101
+EN3 | Bromley | target best-XI CA 96
+EN4 | Grimsby Town | target best-XI CA 87
+EN4 | York City | target best-XI CA 86
+EN4 | Crewe Alexandra | target best-XI CA 90
+EN4 | Shrewsbury Town | target best-XI CA 88

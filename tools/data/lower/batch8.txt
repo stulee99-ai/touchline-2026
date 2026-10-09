@@ -1,0 +1,9 @@
+FR2 | Sochaux | target best-XI CA 103 | slug sochaux
+FR2 | Grenoble | target best-XI CA 106 | slug grenoble
+FR2 | Laval | target best-XI CA 102 | slug laval
+FR2 | Red Star | target best-XI CA 108 | slug red-star
+FR2 | Nancy | target best-XI CA 103 | slug nancy
+FR2 | Pau | target best-XI CA 107 | slug pau
+FR2 | Rodez | target best-XI CA 105 | slug rodez
+FR2 | Boulogne | target best-XI CA 98 | slug boulogne
+FR2 | Dunkerque | target best-XI CA 104 | slug dunkerque

@@ -1,0 +1,9 @@
+DE2 | Hertha BSC | target best-XI CA 123 | slug hertha-bsc
+DE2 | VfL Wolfsburg | target best-XI CA 127 | slug vfl-wolfsburg
+DE2 | FC St. Pauli | target best-XI CA 121 | slug fc-st-pauli
+DE2 | 1. FC Heidenheim | target best-XI CA 121 | slug 1-fc-heidenheim
+DE2 | Hannover 96 | target best-XI CA 117 | slug hannover-96
+DE2 | 1. FC Kaiserslautern | target best-XI CA 118 | slug 1-fc-kaiserslautern
+DE2 | 1. FC Nürnberg | target best-XI CA 115 | slug 1-fc-nurnberg
+DE2 | Karlsruher SC | target best-XI CA 113 | slug karlsruher-sc
+DE2 | Holstein Kiel | target best-XI CA 114 | slug holstein-kiel

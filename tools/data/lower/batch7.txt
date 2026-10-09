@@ -1,0 +1,9 @@
+PT2 | Tondela | target best-XI CA 103 | slug tondela
+PT2 | AFS | target best-XI CA 101 | slug afs
+PT2 | Académica | target best-XI CA 99 | slug academica
+PT2 | Chaves | target best-XI CA 105 | slug chaves
+PT2 | Farense | target best-XI CA 100 | slug farense
+PT2 | Feirense | target best-XI CA 99 | slug feirense
+PT2 | Leixões | target best-XI CA 101 | slug leixoes
+PT2 | Portimonense | target best-XI CA 104 | slug portimonense
+PT2 | União de Leiria | target best-XI CA 102 | slug uniao-de-leiria

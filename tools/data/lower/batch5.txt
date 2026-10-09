@@ -1,0 +1,10 @@
+IT2 | Padova | target best-XI CA 113 | slug padova
+IT2 | Mantova | target best-XI CA 113 | slug mantova
+IT2 | Carrarese | target best-XI CA 111 | slug carrarese
+IT2 | Juve Stabia | target best-XI CA 109 | slug juve-stabia
+IT2 | Avellino | target best-XI CA 115 | slug avellino
+IT2 | Virtus Entella | target best-XI CA 113 | slug virtus-entella
+IT2 | Vicenza | target best-XI CA 114 | slug vicenza
+IT2 | Arezzo | target best-XI CA 109 | slug arezzo
+IT2 | Benevento | target best-XI CA 112 | slug benevento
+IT2 | Ascoli | target best-XI CA 108 | slug ascoli

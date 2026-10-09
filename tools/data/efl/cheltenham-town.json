@@ -1,0 +1,23 @@
+{"club": "Cheltenham Town", "updated": "21 August 2026", "squad": [
+  [1, "Joe Day", "GK", "ENG", 199008, 85],
+  [3, "Jonathan Tomkinson", "DC", "USA", 200210, 85],
+  [4, "Joe Tomlinson", "DL/ML", "ENG", 200009, 86],
+  [5, "Robbie Cundy", "DC", "ENG", 199705, 85],
+  [6, "James Wilson", "DC", "WAL", 198902, 83],
+  [7, "Ben Stevenson", "MC", "ENG", 199703, 86],
+  [8, "Charlie McCann", "MC", "NIR", 200201, 86],
+  [9, "Kirsten Otchere", "ST", "ENG", 200506, 82, 108],
+  [10, "George Miller", "ST", "ENG", 199808, 88],
+  [11, "Jake Bickerstaff", "ST", "ENG", 200108, 86],
+  [14, "Ryan Broom", "AMR/MR", "WAL", 199609, 86],
+  [17, "Shaun McWilliams", "DM/MC", "ENG", 199808, 85],
+  [18, "Andreas Weimann", "ST/AMC", "AUT", 199108, 88],
+  [19, "Jake Evans", "AMR", "ENG", 200802, 80, 115],
+  [20, "Favour Onukwuli", "ST", "ENG", 200406, 75, 100],
+  [21, "George Nurse", "DC/DL", "ENG", 199902, 84],
+  [23, "Wyll Stanway", "GK", "ENG", 200005, 76],
+  [25, "Pierce Sweeney", "DR/DC", "IRL", 199409, 85],
+  [26, "Jordan Shipley", "MC/DM", "IRL", 199709, 86],
+  [33, "Freddy Willcox", "MC", "ENG", 200506, 74, 100],
+  [35, "Mark Barber", "DC", "ENG", 200406, 75, 98]
+]}

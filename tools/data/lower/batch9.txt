@@ -1,0 +1,9 @@
+PT2 | Vizela | target best-XI CA 100 | slug vizela
+PT2 | Penafiel | target best-XI CA 98 | slug penafiel
+PT2 | Felgueiras | target best-XI CA 98 | slug felgueiras
+PT2 | Amarante | target best-XI CA 96 | slug amarante
+PT2 | Lusitânia Lourosa | target best-XI CA 96 | slug lusitania-lourosa
+PT2 | Torreense | target best-XI CA 109 | slug torreense
+PT2 | Paços de Ferreira | target best-XI CA 98 | slug pacos-de-ferreira
+PT2 | Belenenses | target best-XI CA 94 | slug belenenses
+PT2 | Oliveirense | target best-XI CA 93 | slug oliveirense

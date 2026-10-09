@@ -1,0 +1,10 @@
+ES2 | Eibar | target best-XI CA 110 | slug eibar
+ES2 | Albacete | target best-XI CA 109 | slug albacete
+ES2 | Burgos | target best-XI CA 107 | slug burgos
+ES2 | Castellón | target best-XI CA 109 | slug castellon
+ES2 | Córdoba | target best-XI CA 109 | slug cordoba
+ES2 | Tenerife | target best-XI CA 107 | slug tenerife
+ES2 | Andorra | target best-XI CA 105 | slug andorra
+ES2 | Ceuta | target best-XI CA 105 | slug ceuta
+ES2 | Eldense | target best-XI CA 105 | slug eldense
+ES2 | Sabadell | target best-XI CA 106 | slug sabadell

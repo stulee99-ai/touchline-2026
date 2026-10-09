@@ -1,0 +1,12 @@
+EN2 | Blackburn Rovers | target best-XI CA 123
+EN2 | Derby County | target best-XI CA 120
+EN2 | Preston North End | target best-XI CA 119
+EN2 | Watford | target best-XI CA 119
+EN3 | Sheffield Wednesday | target best-XI CA 103
+EN3 | Barnsley | target best-XI CA 106
+EN3 | Wycombe Wanderers | target best-XI CA 101
+EN3 | AFC Wimbledon | target best-XI CA 99
+EN4 | Port Vale | target best-XI CA 90
+EN4 | Oldham Athletic | target best-XI CA 88
+EN4 | Barnet | target best-XI CA 88
+EN4 | Fleetwood Town | target best-XI CA 89

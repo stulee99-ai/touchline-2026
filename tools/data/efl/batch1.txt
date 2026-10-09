@@ -1,0 +1,12 @@
+EN2 | Birmingham City | target best-XI CA 126
+EN2 | Charlton Athletic | target best-XI CA 117
+EN2 | Portsmouth | target best-XI CA 119
+EN2 | Swansea City | target best-XI CA 123
+EN3 | Leicester City | target best-XI CA 114
+EN3 | Reading | target best-XI CA 102
+EN3 | Stockport County | target best-XI CA 103
+EN3 | Leyton Orient | target best-XI CA 98
+EN4 | Bristol Rovers | target best-XI CA 93
+EN4 | Gillingham | target best-XI CA 89
+EN4 | Accrington Stanley | target best-XI CA 87
+EN4 | Exeter City | target best-XI CA 88

@@ -1,0 +1,12 @@
+EN2 | Bristol City | target best-XI CA 122
+EN2 | Middlesbrough | target best-XI CA 124
+EN2 | Sheffield United | target best-XI CA 126
+EN2 | West Ham United | target best-XI CA 137
+EN3 | Luton Town | target best-XI CA 110
+EN3 | Bradford City | target best-XI CA 103
+EN3 | Notts County | target best-XI CA 104
+EN3 | Stevenage | target best-XI CA 99
+EN4 | Swindon Town | target best-XI CA 91
+EN4 | Walsall | target best-XI CA 91
+EN4 | Colchester United | target best-XI CA 90
+EN4 | Northampton Town | target best-XI CA 87

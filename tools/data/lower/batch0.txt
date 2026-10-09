@@ -1,0 +1,10 @@
+ES2 | Mallorca | target best-XI CA 126 | slug mallorca
+ES2 | Girona | target best-XI CA 125 | slug girona
+ES2 | Real Oviedo | target best-XI CA 119 | slug real-oviedo
+ES2 | Sporting Gijón | target best-XI CA 116 | slug sporting-gijon
+ES2 | Real Valladolid | target best-XI CA 117 | slug real-valladolid
+ES2 | Las Palmas | target best-XI CA 113 | slug las-palmas
+ES2 | Leganés | target best-XI CA 113 | slug leganes
+ES2 | Granada | target best-XI CA 112 | slug granada
+ES2 | Cádiz | target best-XI CA 112 | slug cadiz
+ES2 | Almería | target best-XI CA 114 | slug almeria

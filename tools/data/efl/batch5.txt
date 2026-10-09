@@ -1,0 +1,12 @@
+EN2 | Burnley | target best-XI CA 130
+EN2 | Millwall | target best-XI CA 123
+EN2 | Southampton | target best-XI CA 127
+EN2 | Wolverhampton Wanderers | target best-XI CA 134
+EN3 | Huddersfield Town | target best-XI CA 107
+EN3 | Plymouth Argyle | target best-XI CA 103
+EN3 | Milton Keynes Dons | target best-XI CA 99
+EN3 | Burton Albion | target best-XI CA 99
+EN4 | Tranmere Rovers | target best-XI CA 92
+EN4 | Salford City | target best-XI CA 86
+EN4 | Crawley Town | target best-XI CA 86
+EN4 | Rochdale | target best-XI CA 86
