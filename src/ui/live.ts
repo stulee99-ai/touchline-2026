@@ -16,6 +16,7 @@ import type { Club, CommentaryLine, Fixture, Mentality, Tactics } from '../engin
 import type { Action, Ctx } from './ctx.js';
 import type { DragSource, DropTarget } from './dnd.js';
 import { runControls } from './runs.js';
+import { landscape } from './layout.js';
 import { clubStrip, condBar, condClass, esc, fullName, minuteLabel, shortName } from './format.js';
 import { barColours, benchRow, INSTRUCTIONS, instructionSelect, primaryPos, statBar } from './screens.js';
 
@@ -81,7 +82,8 @@ interface LiveState {
   seenEvents: number;
   incident: Incident | null;
   view: 'match' | 'tactics';
-  panel: 'mine' | 'opp';
+  /** The right-hand panel. Stats and Scores are tabs of their own only in the landscape layout. */
+  panel: 'mine' | 'opp' | 'stats' | 'scores';
   /** Tactics view: a shirt (formation slot) or bench place waiting for a second click. */
   selSlot: number | null;
   selBench: number | null;
@@ -394,8 +396,8 @@ function updateBoard(ctx: Ctx): void {
   set('lm-agg', aggText(sim));
   set('lm-stats', statsHtml(ctx, sim));
   set('lm-others', othersHtml(ctx));
-  const side = live.panel === 'mine' ? live.side : (1 - live.side) as 0 | 1;
-  set('lm-team', playerRows(sim, side, live.panel === 'mine' ? incidentHl() : null));
+  const side = live.panel === 'opp' ? (1 - live.side) as 0 | 1 : live.side;
+  set('lm-team', playerRows(sim, side, live.panel === 'opp' ? null : incidentHl()));
   if (live.panel === 'opp') set('lm-opp-bench', oppBench(sim, side));
   live.flash.clear();
 }
@@ -405,7 +407,7 @@ function updateControls(ctx: Ctx): void {
   const el = document.getElementById('lm-controls');
   if (el) el.innerHTML = controlsHtml();
   const subs = document.getElementById('lm-subs');
-  if (subs && live.panel === 'mine') subs.innerHTML = subControls(live.mine.sim, live.side);
+  if (subs && live.panel !== 'opp') subs.innerHTML = subControls(live.mine.sim, live.side);
   updateBoard(ctx);
 }
 
@@ -555,6 +557,22 @@ function tacticsView(ctx: Ctx): string {
         ? 'Drag a substitute onto a shirt to bring him on, or drag one shirt onto another to swap positions. Clicking works too.'
         : 'Drag one shirt onto another to swap positions.';
   const benchHtml = benchRow(bench, me.colours, { sel: L.selBench, drop: false, act: canSub ? 'lt-bench' : undefined, count: subsStatus(sim, L.side) });
+  if (landscape()) {
+    // The pitch on its side on the left; everything else in a column that scrolls beside it.
+    return `<div class="live-tactics lt-ls">
+        <div class="lt-pitch"><div class="pitch-h">${livePitch(sim, L.side, me, true, L.selSlot, L.incident?.playerId ?? null)}</div></div>
+        <div class="lt-side" data-keep-scroll="lt-side">
+          <div class="instr-row"><label for="lt-formation"><b>Formation</b></label><select class="cm" id="lt-formation" data-change="live-formation">${formations}</select>
+            <div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div></div>
+          <p class="hint">${hint}</p>
+          ${planHtml()}
+          ${benchHtml}
+          <p class="legend"><i>White</i> natural · <i class="acc">Green</i> accomplished · <i class="awk">Red</i> out of position</p>
+          <div class="lm-col"><h4>TEAM INSTRUCTIONS</h4><div class="instr compact">${instr}</div></div>
+          <div class="lm-col"><h4>OPPOSITION · ${esc(opp.name.toUpperCase())}</h4>${oppSummary(sim, oppSide)}<p class="small-note opp-bench">${oppBench(sim, oppSide)}</p></div>
+        </div>
+      </div>`;
+  }
   return `<div class="live-tactics">
       <div class="lt-main">
         <div class="instr-row"><label for="lt-formation"><b>Formation</b></label><select class="cm" id="lt-formation" data-change="live-formation">${formations}</select>
@@ -587,8 +605,9 @@ export function matchScreen(ctx: Ctx): string {
   const me = userClub(g);
   const oppSide = (1 - live.side) as 0 | 1;
   const opp = sideClub(ctx, oppSide)!;
-  const tabs = `<div class="segs small tabs" role="tablist" aria-label="Team shown"><button class="seg${live.panel === 'mine' ? ' on' : ''}" data-act="live-panel" data-p="mine" role="tab" aria-selected="${live.panel === 'mine'}">${esc(me.name)}</button><button class="seg${live.panel === 'opp' ? ' on' : ''}" data-act="live-panel" data-p="opp" role="tab" aria-selected="${live.panel === 'opp'}">${esc(opp.name)}</button></div>`;
-  const teamCol = live.panel === 'mine'
+  const tabs = `<div class="segs small tabs" role="tablist" aria-label="Team shown"><button class="seg${live.panel !== 'opp' ? ' on' : ''}" data-act="live-panel" data-p="mine" role="tab" aria-selected="${live.panel !== 'opp'}">${esc(me.name)}</button><button class="seg${live.panel === 'opp' ? ' on' : ''}" data-act="live-panel" data-p="opp" role="tab" aria-selected="${live.panel === 'opp'}">${esc(opp.name)}</button></div>`;
+  if (landscape()) return matchScreenLandscape(ctx);
+  const teamCol = live.panel !== 'opp'
     ? `<div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, live.side)}</div>
         ${sim.finished ? '' : instructionsHtml(sim, live.side)}
         <table class="grid compact live-team"><tbody id="lm-team">${playerRows(sim, live.side, incidentHl())}</tbody></table>
@@ -624,6 +643,63 @@ export function matchScreen(ctx: Ctx): string {
     ${htHtml(ctx)}
     <div class="lm-controls" id="lm-controls">${controlsHtml()}</div>
     ${body}
+  </section>`;
+}
+
+/**
+ * Landscape phones: the whole match on one screen. The scoreboard stays at the top, commentary and key
+ * moments on the left, your team (or the stats, the opposition, the other scores) on the right, and the
+ * match controls along the bottom. Nothing scrolls but the two columns.
+ */
+function matchScreenLandscape(ctx: Ctx): string {
+  const L = live!;
+  const g = ctx.game;
+  const sim = L.mine.sim;
+  const f: Fixture = L.mine.fixture;
+  const h = club(g, f.homeId);
+  const a = club(g, f.awayId);
+  const last = L.shown[L.shown.length - 1];
+  const log = L.shown.filter((l) => l.tone !== 'plain').slice().reverse()
+    .map((l) => `<li class="t-${l.tone}"><span class="min">${minuteLabel(l.minute, l.stage)}</span>${esc(l.text)}</li>`).join('');
+  const oppSide = (1 - L.side) as 0 | 1;
+  const opp = sideClub(ctx, oppSide)!;
+  const tab = (p: LiveState['panel'], label: string) => `<button class="lt-tab${L.panel === p ? ' on' : ''}" data-act="live-panel" data-p="${p}" role="tab" aria-selected="${L.panel === p}">${label}</button>`;
+  let right: string;
+  if (L.panel === 'opp') {
+    right = `${oppSummary(sim, oppSide)}<table class="grid compact live-team"><tbody id="lm-team">${playerRows(sim, oppSide, null)}</tbody></table>
+      <p class="small-note opp-bench" id="lm-opp-bench">${oppBench(sim, oppSide)}</p>`;
+  } else if (L.panel === 'stats') {
+    right = `<div class="stats-block" id="lm-stats">${statsHtml(ctx, sim)}</div>`;
+  } else if (L.panel === 'scores') {
+    right = `<h4 class="ls-sub">${esc(compName(g, f.comp).toUpperCase())}</h4><ul class="others" id="lm-others">${othersHtml(ctx)}</ul>`;
+  } else {
+    right = `<div class="ls-team-top"><div class="segs small" role="group" aria-label="Mentality">${mentalityButtons(sim, L.side)}</div>
+        ${sim.finished ? '' : instructionsHtml(sim, L.side)}</div>
+      <table class="grid compact live-team"><tbody id="lm-team">${playerRows(sim, L.side, incidentHl())}</tbody></table>
+      <div id="lm-subs">${subControls(sim, L.side)}</div>`;
+  }
+  const body = L.view === 'tactics' && !L.done
+    ? tacticsView(ctx)
+    : `<div class="ls-live">
+        <div class="ls-live-left" data-keep-scroll="lm-left">
+          ${incidentHtml()}
+          ${htHtml(ctx)}
+          <div class="lm-stage${last?.tone === 'goal' ? ' goal' : ''}" id="lm-stage" style="${stageStyle(ctx, last)}"><p id="lm-line" class="lm-line ${last ? `t-${last.tone}` : 't-info'}" aria-live="polite">${last ? esc(last.text) : `Welcome to ${esc(f.neutral ?? h.stadium)}.`}</p></div>
+          <div class="lm-col ls-moments"><h4>KEY MOMENTS</h4><ol class="lm-log" id="lm-log">${log}</ol></div>
+        </div>
+        <div class="ls-live-right">
+          <div class="lt-tabs" role="tablist" aria-label="Panel">${tab('mine', 'Your team')}${tab('stats', 'Stats')}${tab('opp', esc(opp.name))}${tab('scores', 'Scores')}</div>
+          <div class="ls-live-pane" data-keep-scroll="lm-right-${L.panel}">${right}</div>
+        </div>
+      </div>`;
+  return `<section class="panel live ls-fill ls-match">
+    <div class="scoreboard live-sb">
+      <div class="sb-team" style="${clubStrip(h)}"><small>${f.comp === 'FRI' ? 'Pre-season friendly' : `${esc(compName(g, f.comp))} · ${esc(stageText(g, f))}`}</small><span>${esc(h.name)}</span></div>
+      <div class="sb-mid"><div class="sb-score" id="lm-score">${sim.score[0]} - ${sim.score[1]}</div><div class="sb-clock" id="lm-clock">${clockText(sim)}</div><div class="sb-agg" id="lm-agg">${aggText(sim)}</div></div>
+      <div class="sb-team" style="${clubStrip(a)}"><span>${esc(a.name)}</span><small>${esc(f.neutral ?? h.stadium)} · ${f.time}</small></div>
+    </div>
+    ${body}
+    <div class="lm-controls" id="lm-controls">${controlsHtml()}</div>
   </section>`;
 }
 
@@ -875,7 +951,7 @@ export const liveActions: Record<string, Action> = {
   },
   'live-panel': (ctx, el) => {
     if (!live) return;
-    live.panel = el.dataset.p as 'mine' | 'opp';
+    live.panel = el.dataset.p as LiveState['panel'];
     ctx.render();
   },
   'live-dismiss': (ctx) => carryOn(ctx, true),

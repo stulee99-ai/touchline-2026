@@ -106,6 +106,17 @@ build.mjs               esbuild bundle + CSS inlined into one HTML file
 
 The League Table screen shows your own league. Under it, an **Around the world** section has a Country row and a League row for every other league, so you can follow the rest of the pyramid and the other countries without leaving the screen. (Fixtures and Statistics still have their own league tabs.)
 
+## Landscape on phones
+
+Turn a phone sideways and the game switches to a layout made for a short, wide screen (`ui/layout.ts`: landscape, at most 520px tall, touch screen). Portrait phones, tablets and PCs keep the normal layout, and turning the phone switches straight away.
+
+- **Menu strip** down the left edge: Inbox, Squad, Tactics, Fixtures, Table, Transfers and **More** (every other screen, Back, the date, board confidence and search), with **Continue** fixed at the foot. The page itself never scrolls; each panel scrolls on its own, and keeps its place when the screen redraws.
+- **Live match:** the scoreboard stays at the top, the commentary and key moments on the left, and on the right four tabs: **Your team** (mentality, instructions, ratings, substitutions), **Stats**, the **opposition**, and the other **Scores**. The match controls run along the bottom. The half-time card and incidents appear in the left column; **Tactics** puts the pitch on its side with the bench, instructions and the opposition beside it.
+- **Tactics:** the pitch lies on its side, attacking left to right, with the formation and mentality beside it and three tabs: **Squad** (drag a player onto a shirt, or tap a shirt to open the swap list on the right), **Bench**, and **Shape** (team instructions, runs, the key).
+- **Player profile:** his club's squad is listed beside the profile, so you can flick from player to player. The inbox shows the message list beside the message.
+- **Very short screens** (browser bars showing) drop the date from the strip and use smaller shirts, so Continue always fits.
+- **Home screen:** on the Netlify site, *Add to Home Screen* (iPhone, Safari share menu) or *Install app* (Android, Chrome) opens the game full screen without the browser's bars, with its own icon (`public/`: manifest, icons; copied into `dist/` by the build). Either way up still works.
+
 ## Tactics on phones
 
 On screens up to 980px wide the run arrows leave the pitch: a shirt with runs switched on shows a small badge, and tapping any shirt (or substitute) opens a sheet along the bottom with the two run toggles and the whole squad ordered by rating in that position (green natural, amber accomplished, red out of position). One tap swaps a player in, and the sheet stays open for further changes until you press Done. The squad list sits straight under the pitch and bench, and team instructions come last. Wider screens keep the arrows above the shirts and drag and drop.

@@ -1,3 +1,4 @@
+import { landscape } from './layout.js';
 import { ATTR_LABEL, GOALKEEPING, MENTAL, PHYSICAL, TECHNICAL } from '../engine/attributes.js';
 import { TRAIT_DEFS, traitsOf } from '../engine/traits.js';
 import { sharpOf } from '../engine/prep.js';
@@ -68,8 +69,8 @@ function compTabs(ctx: Ctx, current: string): string {
 }
 
 /** A CM-style window: title bar in club colours ("Arsenal – Squad"), then the content. */
-export function panel(c: Club, title: string, body: string, extra = ''): string {
-  return `<section class="panel"><header class="strip" style="${clubStrip(c)}"><h2>${esc(c.name)} <small>– ${title}</small></h2>${extra}</header>${body}</section>`;
+export function panel(c: Club, title: string, body: string, extra = '', cls = ''): string {
+  return `<section class="panel${cls ? ` ${cls}` : ''}"><header class="strip" style="${clubStrip(c)}"><h2>${esc(c.name)} <small>– ${title}</small></h2>${extra}</header>${body}</section>`;
 }
 
 function leaguePanel(ctx: Ctx, title: string, body: string, extra = '', compId = shownComp(ctx)): string {
@@ -182,7 +183,7 @@ export function inbox(ctx: Ctx): string {
     <div class="pad-top">${segs([['all', 'All'], ['result', 'Results'], ['squad', 'Squad'], ['board', 'Board']], filter, 'news-filter', 'f')}
       ${unread ? `<button class="btn small ghost" data-act="news-read-all">Mark all read (${unread})</button>` : ''}</div>
     <div class="inbox">
-      <ul class="news-list" aria-label="Messages">${list || '<li class="pad small-note">No messages.</li>'}</ul>
+      <ul class="news-list" aria-label="Messages" data-keep-scroll="news-list">${list || '<li class="pad small-note">No messages.</li>'}</ul>
       <article class="news-body${sel?.kind === 'headline' ? ' story' : ''}">${sel ? `${sel.debrief ? debriefHtml(g, sel) : storyHtml(g, sel)}${sel.link ? `<p><button class="btn" data-act="news-link" data-s="${sel.link.screen}"${sel.link.playerId ? ` data-p="${sel.link.playerId}"` : ''}${sel.link.tab ? ` data-t="${sel.link.tab}"` : ''}>${esc(sel.link.label)} ►</button></p>` : ''}` : ''}
         <p class="board-note">Board target: ${esc(targetText(g, g.userClubId))} (around ${ordinal(target)}).</p>
       </article>
@@ -252,7 +253,29 @@ export function squad(ctx: Ctx): string {
 
 /* ───────────────────────── Player ───────────────────────── */
 
+/**
+ * The player page. On a landscape phone his club's squad sits in a list beside the profile, so you can
+ * flick through the players without going back each time.
+ */
 export function player(ctx: Ctx): string {
+  const page = playerProfile(ctx);
+  if (!landscape()) return page;
+  const g = ctx.game;
+  const p = g.players[ctx.ui.playerId ?? -1];
+  const c = p?.clubId ? club(g, p.clubId) : null;
+  if (!p || !c) return page;
+  const mine = c.id === g.userClubId;
+  const rows = c.playerIds.map((id) => g.players[id]).filter(Boolean)
+    .sort((a, b) => posOrder(a) - posOrder(b) || b.ca - a.ca)
+    .map((q) => `<li><button class="ls-row${q.id === p.id ? ' on' : ''}" data-act="player" data-id="${q.id}"${q.id === p.id ? ' aria-current="true"' : ''}><span class="ls-no">${q.squadNo || ''}</span><span class="ls-name">${esc(fullName(q))}</span><span class="ls-pos">${esc(primaryPos(q))}</span>${mine ? `<span class="ls-con ${q.condition < 75 ? 'low' : ''}">${Math.round(q.condition)}%</span>` : `<span class="ls-con">${q.age}</span>`}</button></li>`).join('');
+  return `<div class="ls-split">
+      <section class="panel ls-list"><header class="strip" style="${clubStrip(c)}"><h2>${esc(c.name)} <small>– Squad</small></h2><span class="strip-meta">${c.playerIds.length}</span></header>
+        <ul class="ls-rows" data-keep-scroll="pl-list">${rows}</ul></section>
+      <div class="ls-detail" data-keep-scroll="pl-detail-${p.id}">${page}</div>
+    </div>`;
+}
+
+function playerProfile(ctx: Ctx): string {
   const g = ctx.game;
   const p = g.players[ctx.ui.playerId ?? -1];
   const back = `<button class="btn small" data-act="back">◄ Back</button>`;
@@ -545,6 +568,31 @@ export function tacticsBoard(ctx: Ctx): string {
   const benchExtra = c.bench ? ' <button class="link small" data-act="bench-auto">Let the assistant pick</button>' : ' <span class="small-note">(assistant\'s picks)</span>';
   const benchHtml = benchRow(bench.map((id) => g.players[id]), c.colours, { sel: bsel, drop: true, act: 'bench-slot', extra: benchExtra });
   const sheet = tacticsSheet(ctx, xi, bench, sel, bsel);
+  if (landscape()) {
+    // Landscape phones: the pitch on its side, and beside it the shape controls and three tabs.
+    const tab = ctx.ui.tacTab ?? 'squad';
+    const tb = (k: 'squad' | 'bench' | 'shape', label: string) => `<button class="lt-tab${tab === k ? ' on' : ''}" data-act="tac-tab" data-t="${k}" role="tab" aria-selected="${tab === k}">${label}</button>`;
+    const pick = `<div class="row-btns pick-actions">${c.lineup ? '<button class="btn" data-act="autopick">Let the assistant pick</button>' : '<button class="btn" data-act="keep-xi">Use this XI as my team</button>'}<button class="btn ghost" data-act="unpick-all" title="Empty the XI and the bench so you can pick everyone yourself">Unpick all</button></div>`;
+    const lsHint = sel !== null
+      ? `Pick a player for <b>${f.slots[sel]}</b>, best first.`
+      : bsel !== null ? 'Pick a player for the bench.' : `${c.lineup ? '<b>Your XI.</b>' : '<b>Assistant\'s XI.</b>'} Drag a player onto a shirt, or tap a shirt.`;
+    const pane = tab === 'bench'
+      ? `${benchHtml}${pick}`
+      : tab === 'shape'
+        ? `${pick}<p class="legend runleg"><span class="runkey">${ARROW_BALL}</span><span>runs with the ball</span><span class="runkey">${ARROW_OFF}</span><span>forward runs without it</span><span class="small-note">Tap a shirt to change the player or set his runs.</span>${Object.values(c.runs ?? {}).some((r) => r.ball || r.off) ? '<button class="link small" data-act="run-clear">Clear all arrows</button>' : ''}</p>
+          <p class="legend"><i class="nat">Green</i> natural · <i class="acc">Amber</i> accomplished · <i class="awk">Red</i> out of position</p>
+          <div class="instr"><span class="sub-head" style="grid-column:1/-1;padding:0 0 4px">Team instructions</span>${instr}<p class="instr-note">${INSTRUCTIONS.map((i) => `<b>${i.label}:</b> ${i.note}`).join(' ')}</p></div>`
+        : `<p class="hint">${lsHint}</p><table class="grid compact picker-table"><thead><tr><th></th><th class="${pickDir && pickCol === 'picked' ? 'sorted' : ''}"><button data-act="pick-sort">Sel${pickDir && pickCol === 'picked' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>Name</th><th class="n" title="Condition">Con</th><th class="${pickDir && pickCol === 'pos' ? 'sorted' : ''}"><button data-act="pos-sort">Pos${pickDir && pickCol === 'pos' ? (pickDir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th><th>${slotPos ? `At ${slotPos}` : 'Ability'}</th><th class="n hide-xs">Sharp</th><th class="r">Sub</th></tr></thead><tbody>${list}</tbody></table>`;
+    return `<div class="tactics tac-ls">
+        <div class="tac-pitch"><div class="pitch-h"><div class="pitch">${tokens}${runCtl}<span class="pitch-line half"></span><span class="pitch-circle"></span><span class="pitch-box top"></span><span class="pitch-box bottom"></span></div></div></div>
+        <div class="tac-side">
+          <div class="tac-head"><label class="sr-only" for="formation">Formation</label><select class="cm" id="formation" data-change="formation">${formations}</select>${ments}</div>
+          <div class="lt-tabs" role="tablist" aria-label="Tactics">${tb('squad', 'Squad')}${tb('bench', `Bench (${bench.length})`)}${tb('shape', 'Shape')}</div>
+          <div class="tac-pane" data-keep-scroll="tac-${tab}">${pane}</div>
+        </div>
+        ${sheet}
+      </div>`;
+  }
   return `
     <div class="tactics">
       <div class="pitch-wrap">
@@ -601,7 +649,7 @@ function tacticsSheet(ctx: Ctx, xi: number[], bench: number[], sel: number | nul
 export function tactics(ctx: Ctx): string {
   const c = userClub(ctx.game);
   const f = getFormation(c.tactics.formation);
-  return panel(c, 'Tactics', tacticsBoard(ctx), `<span class="strip-meta">${f.name} · ${c.tactics.mentality} · ${c.lineup ? 'your XI' : "assistant's XI"}</span>`);
+  return panel(c, 'Tactics', tacticsBoard(ctx), `<span class="strip-meta">${f.name} · ${c.tactics.mentality} · ${c.lineup ? 'your XI' : "assistant's XI"}</span>`, landscape() ? 'ls-fill' : '');
 }
 
 /* ───────────────────────── Pre-match ───────────────────────── */
@@ -1124,6 +1172,10 @@ export function seasonEnd(ctx: Ctx): string {
 /* ───────────────────────── Actions ───────────────────────── */
 
 export const screenActions: Record<string, Action> = {
+  'tac-tab': (ctx, el) => {
+    ctx.ui.tacTab = el.dataset.t as 'squad' | 'bench' | 'shape';
+    ctx.render();
+  },
   'pick-sort': (ctx) => {
     const same = (ctx.ui.pickCol ?? 'picked') === 'picked';
     ctx.ui.pickSort = !same ? 'asc' : ctx.ui.pickSort === 'asc' ? 'desc' : ctx.ui.pickSort === 'desc' ? null : 'asc';

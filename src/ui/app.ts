@@ -15,6 +15,7 @@ import type { Action, Ctx, Screen, UiState } from './ctx.js';
 import { clubStrip, esc, kit, starBar, starBarRaw } from './format.js';
 import { finishLiveMatch, isLive, liveActions, liveChangeActions, liveDrop, liveFinished, matchScreen, resumeAfterRender, startLiveMatch } from './live.js';
 import { installDragDrop } from './dnd.js';
+import { landscape, shortContinue, shortDate, watchLandscape } from './layout.js';
 import * as S from './screens.js';
 import { injuryActions } from './injuryui.js';
 import { financesScreen, marketActions, marketChangeActions, transfersScreen } from './market.js';
@@ -117,7 +118,12 @@ function toast(msg: string): void {
 function go(screen: Screen, extra: Partial<UiState> = {}): void {
   if ((ui.screen !== screen || (extra.clubId !== undefined && extra.clubId !== ui.clubId)) && screen !== 'match') backStack.push({ ...ui });
   if (backStack.length > 20) backStack.shift();
+  const same = ui.screen === screen;
+  const moved = (['playerId', 'clubId', 'fixtureId', 'nation'] as const).some((k) => k in extra && extra[k] !== ui[k]);
   ui = { ...ui, slot: null, benchSlot: null, confirm: null, ...extra, screen };
+  moreOpen = false;
+  keepScroll = same;
+  keepMain = same && !moved;
   render();
   window.scrollTo({ top: 0 });
 }
@@ -327,11 +333,79 @@ function shell(): string {
     <main class="main">${main}</main>`;
 }
 
+/* ── Landscape phones: a menu strip down the left edge, Continue at its foot, and panels that scroll on their own ── */
+
+const RAIL: [Screen, string, string][] = [
+  ['inbox', 'Inbox', 'M2 3.5h12v9H2z M2.5 4.5L8 9l5.5-4.5'],
+  ['squad', 'Squad', 'M3.7 5.5a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0 M2 13c0-2.4 1.8-4 4-4s4 1.6 4 4 M11 9.2c1.8 0 3 1.4 3 3.3 M9.7 6a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0'],
+  ['tactics', 'Tactics', 'M2 2h12v12H2z M2 8h12 M6 8a2 2 0 1 0 4 0a2 2 0 1 0 -4 0'],
+  ['fixtures', 'Fixtures', 'M2 3h12v11H2z M2 6.5h12 M5 1.5v3 M11 1.5v3'],
+  ['table', 'Table', 'M2 3.5h12 M2 8h12 M2 12.5h12 M5 2v12'],
+  ['transfers', 'Transfers', 'M2 5h10L9.5 2.5 M14 11H4l2.5 2.5'],
+];
+const svgIcon = (d: string, w = 1.6) => `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+/** The "More" menu on the landscape strip: every other screen, Back and search. */
+let moreOpen = false;
+
+function railShell(): string {
+  const g = game!;
+  const c = userClub(g);
+  const live = isLive();
+  const cont = continueLabel();
+  const unread = g.news.filter((n) => !n.read).length;
+  const nf = userNextFixture(g);
+  const [dow, dm] = seasonOver(g) ? ['End of', seasonLabel(g)] : shortDate(dayLabel(g.season, ui.screen === 'prematch' && nf ? nf.day : g.day));
+  const inRail = new Set(RAIL.map((r) => r[0]));
+  const items = RAIL.map(([s, label, d]) => `<button class="rail-btn${ui.screen === s ? ' on' : ''}" data-act="nav" data-s="${s}" ${live ? 'disabled' : ''} aria-label="${label}${s === 'inbox' && unread ? `, ${unread} unread` : ''}">${svgIcon(d)}<span>${label}</span>${s === 'inbox' && unread ? `<b class="badge">${unread}</b>` : ''}</button>`).join('');
+  const moreOn = moreOpen || !inRail.has(ui.screen) && ui.screen !== 'match' && ui.screen !== 'prematch';
+  const more = `<button class="rail-btn${moreOn ? ' on' : ''}" data-act="ls-more" ${live ? 'disabled' : ''} aria-expanded="${moreOpen}" aria-label="More screens">${svgIcon('M3 8h0.5 M7.75 8h0.5 M12.5 8h0.5', 2.8)}<span>More</span></button>`;
+  const contIcon = cont.disabled ? '<i class="rail-live" aria-hidden="true"></i>' : '<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M2.5 2.5l6 5.5-6 5.5zM8.5 2.5l6 5.5-6 5.5z"/></svg>';
+  const menu = moreOpen && !live
+    ? `<div class="more-back" data-act="ls-more"></div><div class="more-menu" role="dialog" aria-label="All screens">
+        <div class="more-top"><button class="btn" data-act="back">◄ Back</button><div class="more-info"><b>${esc(c.name)} · ${esc(dayLabel(g.season, g.day))}</b><span>${esc(g.managerName)} · Board: ${esc(confidenceWord(g.board?.confidence ?? 60))}${windowOpen(g) ? ' · <span class="chip tv">Window open</span>' : ''}</span></div></div>
+        ${searchBox()}
+        <div class="more-grid">${NAV.map(([s, label]) => `<button class="menu-btn${ui.screen === s ? ' on' : ''}" data-act="nav" data-s="${s}">${label}</button>`).join('')}</div>
+      </div>`
+    : '';
+  return `<div class="ls-shell">
+      <nav class="rail" style="${clubStrip(c)}" aria-label="Main">
+        <div class="rail-date" title="${esc(dayLabel(g.season, g.day))}"><span>${esc(dow)}</span><b>${esc(dm)}</b></div>
+        ${items}${more}
+        <button class="rail-go" data-act="continue" title="Continue" ${cont.disabled ? 'disabled' : ''}>${contIcon}<span>${esc(shortContinue(cont.label))}</span></button>
+      </nav>
+      <main class="main" id="main">${mainScreen()}</main>
+      ${menu}
+    </div>`;
+}
+
+/** Scroll positions to keep across a re-render of the same screen (the page itself doesn't scroll in landscape). */
+let keepScroll = true;
+/** False when the same screen opens on a different player, club or match: the page goes back to the top. */
+let keepMain = true;
+function scrollState(): Map<string, number> {
+  const m = new Map<string, number>();
+  root.querySelectorAll<HTMLElement>(keepMain ? '#main, [data-keep-scroll]' : '[data-keep-scroll]').forEach((el) => {
+    const key = el.id || el.dataset.keepScroll || '';
+    if (key && el.scrollTop) m.set(key, el.scrollTop);
+  });
+  return m;
+}
+
 function render(): void {
   if (!root) return;
   const mgr = document.getElementById('mgr') as HTMLInputElement | null;
   if (mgr) managerName = mgr.value;
-  root.innerHTML = game ? shell() : setupScreen();
+  const ls = landscape() && !!game;
+  const kept = ls && keepScroll ? scrollState() : null;
+  keepScroll = true;
+  keepMain = true;
+  root.innerHTML = game ? (ls ? railShell() : shell()) : setupScreen();
+  if (kept?.size) {
+    root.querySelectorAll<HTMLElement>('#main, [data-keep-scroll]').forEach((el) => {
+      const v = kept.get(el.id || el.dataset.keepScroll || '');
+      if (v) el.scrollTop = v;
+    });
+  }
   if (game && ui.screen === 'match') resumeAfterRender(ctx);
 }
 
@@ -344,10 +418,17 @@ const coreActions: Record<string, Action> = {
   },
   back: () => {
     const prev = backStack.pop();
+    moreOpen = false;
     if (prev) {
       ui = { ...prev, confirm: null, compare: ui.compare }; // the comparison list survives going back
+      keepScroll = false;
       render();
     } else go('inbox');
+  },
+  'ls-more': () => {
+    moreOpen = !moreOpen;
+    render();
+    if (moreOpen) (document.querySelector('.more-menu .menu-btn.on, .more-menu .menu-btn') as HTMLElement | null)?.focus();
   },
   continue: () => {
     const g = game!;
@@ -611,6 +692,12 @@ async function start(data?: Hot['data']): Promise<void> {
     if (!t?.closest('input, textarea, select, [contenteditable="true"]') && !document.getElementById('confirm-modal') && game) e.preventDefault();
   });
   window.claude?.hot?.snapshot?.(() => ({ game, ui: { ...ui, screen: ui.screen === 'match' ? 'inbox' : ui.screen } }));
+  // Turning the phone switches between the normal layout and the landscape one.
+  watchLandscape(() => {
+    moreOpen = false;
+    keepScroll = false;
+    render();
+  });
   render();
 }
 

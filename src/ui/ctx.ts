@@ -34,6 +34,8 @@ export interface UiState {
   /** Training screen: tab, and the camp ticked before it is confirmed. */
   trainTab?: 'team' | 'players';
   trainCamp?: string;
+  /** Landscape tactics: which tab is open beside the pitch. */
+  tacTab?: 'squad' | 'bench' | 'shape';
   /** Tactics screen: bench place waiting for a player. */
   benchSlot?: number | null;
   /** Club screen: which club (defaults to the manager's own) and which tab. */

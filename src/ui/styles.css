@@ -1047,3 +1047,183 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
 @media (max-width: 420px) { .asst-two { grid-template-columns: 1fr; } }
 .link.news-link { font: inherit; color: inherit; font-weight: inherit; text-align: inherit; display: inline; text-decoration: underline; text-decoration-color: rgba(255, 228, 107, 0.55); text-underline-offset: 2px; }
 .link.news-link:hover { color: var(--yellow); }
+
+/* ═════════ Landscape phones (html.ls): menu strip on the left, panels that scroll on their own ═════════ */
+.ls body:has(.ls-shell) { overflow: hidden; height: 100dvh; background-attachment: scroll; }
+.ls-shell { display: flex; height: 100dvh; width: 100vw; overflow: hidden; }
+.rail {
+  flex: none; width: 70px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;
+  padding: max(4px, env(safe-area-inset-top, 0px)) 4px max(4px, env(safe-area-inset-bottom, 0px)) calc(4px + env(safe-area-inset-left, 0px));
+  width: calc(70px + env(safe-area-inset-left, 0px));
+  background: linear-gradient(180deg, #16295a 0%, #0b1733 100%); border-right: 3px solid var(--strip-bg, #0e2149);
+  overflow-y: auto; scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+.rail-date { flex: none; display: grid; text-align: center; line-height: 1.1; padding: 1px 0 3px; color: var(--muted); font-size: 10px; }
+.rail-date b { color: #fff; font-size: 11px; white-space: nowrap; }
+.rail-btn {
+  position: relative; flex: 1 1 0; min-height: 34px; max-height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(0, 0, 0, 0.35); color: #fff; font: inherit; font-size: 10px; font-weight: bold; cursor: pointer; padding: 0;
+}
+.rail-btn svg { width: 17px; height: 17px; flex: none; }
+.rail-btn.on { background: #fff; color: #10244d; border-color: rgba(0, 0, 0, 0.45); box-shadow: inset 4px 0 0 var(--strip-bg, #10244d); }
+.rail-btn:disabled { opacity: 0.38; cursor: default; }
+.rail-btn .badge { position: absolute; top: 2px; right: 4px; font-size: 9.5px; padding: 0 4px; }
+.rail-go {
+  flex: none; margin-top: 3px; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 3px 2px;
+  background: linear-gradient(180deg, #f7f9fd 0%, #b3c3e2 100%); border: 1px solid; border-color: #fff #465c8a #465c8a #fff; color: #10244d;
+  font: inherit; font-size: 10.5px; font-weight: bold; line-height: 1.1; text-align: center; cursor: pointer;
+}
+.rail-go svg { width: 18px; height: 18px; }
+.rail-go:disabled { background: linear-gradient(180deg, #5b6f96, #3b4f78); color: #cfd9ee; cursor: default; }
+.rail-live { width: 9px; height: 9px; border-radius: 50%; background: #8ff0aa; box-shadow: 0 0 0 2px rgba(143, 240, 170, 0.3); }
+.ls .main {
+  flex: 1; min-width: 0; height: 100dvh; max-width: none; margin: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: max(5px, env(safe-area-inset-top, 0px)) calc(6px + env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) 6px;
+}
+.ls .main > .panel + .panel, .ls .main > * + .panel { margin-top: 6px; }
+.ls .strip { padding: 3px 8px; min-height: 26px; box-sizing: border-box; gap: 4px 8px; }
+.ls .strip h2 { font-size: 13.5px; }
+.ls .strip .btn.small { padding: 1px 8px; }
+/* "More": every screen, Back and search */
+.more-back { position: fixed; inset: 0; z-index: 70; background: rgba(4, 10, 26, 0.55); }
+.more-menu {
+  position: fixed; z-index: 71; left: calc(74px + env(safe-area-inset-left, 0px)); top: 6px; bottom: 6px; width: min(460px, calc(100vw - 90px));
+  overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; box-sizing: border-box;
+  background: var(--panel-solid); border: 1px solid; border-color: #6c88bf #07122a #07122a #6c88bf; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.more-top { display: flex; gap: 10px; align-items: center; }
+.more-info { display: grid; line-height: 1.25; min-width: 0; }
+.more-info span { color: var(--muted); font-size: 11.5px; }
+.more-menu .search { flex: none; max-width: none; }
+.more-menu .search input { padding: 7px 8px; }
+.more-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.more-grid .menu-btn { justify-content: center; min-height: 40px; background: var(--row); border-color: #000; color: #fff; }
+.more-grid .menu-btn.on { background: #fff; color: #10244d; }
+.ls .toast { bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: calc(50% + 35px); }
+/* Panels that fill the screen and scroll inside: the inbox (list beside message), live match, tactics, player */
+.ls .main > .panel:has(> .inbox), .ls .main > .panel.ls-fill { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; }
+.ls .inbox { flex: 1 0 190px; min-height: 190px; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.ls .news-list { max-height: none; overflow-y: auto; overscroll-behavior: contain; }
+.ls .news-body { overflow-y: auto; overscroll-behavior: contain; max-width: none; padding: 8px 14px; }
+.ls .news-item { padding: 6px 8px; }
+.ls .next { margin: 6px 8px; padding: 5px 10px; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; }
+.ls .next-label { font-size: 10.5px; }
+.ls .next-main { font-size: 14px; }
+.ls .next-meta { font-size: 11.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls .pad-top { padding: 4px 8px 4px; }
+.ls .todo { margin: 6px 8px; }
+
+/* Landscape: a pitch on its side (attacking left to right). The vertical board is turned a quarter, the shirts turned back. */
+.ls .pitch-h { position: relative; height: 100%; aspect-ratio: 88 / 68; max-width: 64vw; container-type: size; flex: none; }
+.ls .pitch-h > .pitch { position: absolute; left: 50%; top: 50%; width: 100cqh; height: 100cqw; max-width: none; aspect-ratio: auto; margin: 0; transform: translate(-50%, -50%) rotate(90deg); }
+.ls .pitch-h .token { transform: translate(-50%, 50%) rotate(-90deg); width: 74px; }
+.ls .pitch-h .token .tname { max-width: 74px; font-size: 10.5px; }
+.ls .pitch-h .token .shirt { min-width: 24px; height: 20px; font-size: 11.5px; }
+
+/* Landscape live match: scoreboard on top, two columns, controls along the bottom */
+.ls .ls-match { border-width: 1px; }
+.ls .ls-match .scoreboard { margin: 0; flex: none; border-width: 0 0 1px; }
+.ls .ls-match .sb-team { flex-direction: column; gap: 0; font-size: 16px; padding: 3px 8px; min-width: 0; }
+.ls .ls-match .sb-team span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls .ls-match .sb-team small { font-size: 10px; font-weight: bold; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ls .ls-match .sb-score { font-size: 26px; padding: 2px 16px; }
+.ls .ls-match .sb-clock { font-size: 11px; padding-bottom: 2px; }
+.ls-live { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 6px 6px 0; }
+.ls-live-left { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 5px; }
+.ls .ls-live-left .lm-stage { margin: 0; min-height: 62px; flex: none; padding: 6px 12px; }
+.ls .ls-live-left .lm-line { font-size: 15px; }
+.ls .ls-live-left .lm-line.t-goal { font-size: 18px; }
+.ls .ls-live-left .incident { margin: 0; }
+.ls .ls-live-left .asst-card { margin: 0; flex: none; }
+.ls .ls-moments { flex: 1 0 auto; }
+.ls .ls-moments .lm-log { max-height: none; overflow: visible; }
+.ls-live-right { min-height: 0; display: flex; flex-direction: column; background: var(--row); border: 1px solid #000; }
+.lt-tabs { display: flex; gap: 2px; padding: 3px 4px 0; background: var(--head); border-bottom: 1px solid #000; flex: none; }
+.lt-tab { flex: 1 1 0; min-width: 0; min-height: 32px; background: transparent; border: 1px solid transparent; color: var(--muted); font: inherit; font-weight: bold; font-size: 11.5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.lt-tab:hover { color: #fff; }
+.lt-tab.on { background: var(--row); border-color: #000; border-bottom-color: var(--row); color: var(--yellow); margin-bottom: -1px; }
+.ls-live-pane { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 6px; }
+.ls-live-pane .stats-block { padding: 8px 10px; gap: 8px; }
+.ls-live-pane .others { padding: 4px 8px; }
+.ls-sub { font-size: 11px; color: var(--muted); margin: 6px 8px 2px; }
+.ls-team-top { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 5px 6px; }
+.ls-team-top .instr-row { gap: 4px 6px; }
+.ls-team-top select.cm { max-width: 96px; }
+.ls .ls-match .live-team td { padding-top: 2px; padding-bottom: 2px; }
+.ls .ls-match .lm-controls { flex: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; justify-content: flex-start; gap: 5px; padding: 5px 6px; margin-top: 6px; background: linear-gradient(180deg, #16295a, #0b1733); border-top: 1px solid #000; }
+.ls .ls-match .lm-controls .btn, .ls .ls-match .lm-controls .seg { min-height: 34px; flex: none; }
+.ls .ls-match .lm-controls .segs { flex-wrap: nowrap; }
+
+/* Landscape tactics during a match: pitch left, the rest in a column beside it */
+.ls .live-tactics.lt-ls { flex: 1 1 0; min-height: 0; display: flex; gap: 8px; padding: 6px 6px 0; }
+.lt-ls .lt-pitch { height: 100%; min-height: 0; flex: none; }
+.lt-ls .lt-side { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; }
+.lt-ls .lt-side > * { flex: none; margin: 0; }
+.lt-ls .lt-side .instr-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.lt-ls .bench-row { margin: 0; }
+.lt-ls .sub-plan { margin: 0; }
+
+/* Landscape tactics: pitch on its side, shape controls and tabs beside it */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ls .tactics.tac-ls { display: flex; flex-direction: row; gap: 6px; padding: 6px; height: calc(100dvh - 50px); box-sizing: border-box; }
+.ls .ls-fill > .tactics.tac-ls { flex: 1 1 0; height: auto; min-height: 220px; }
+.tac-ls .tac-pitch { height: 100%; min-height: 0; flex: none; display: flex; }
+.tac-ls .tac-side { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--row); border: 1px solid #000; }
+.tac-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 5px 6px; background: var(--head); }
+.tac-head select.cm { min-height: 28px; }
+.tac-head .segs .seg { padding: 4px 7px; font-size: 11.5px; }
+.tac-pane { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 6px; }
+.tac-pane .hint { margin: 4px 6px; font-size: 11.5px; }
+.tac-pane .bench-row { margin: 6px; }
+.tac-pane .pick-actions { margin: 6px; }
+.tac-pane .legend { margin: 6px; }
+.tac-pane .instr { margin: 6px; }
+.tac-ls .picker-table th:nth-child(7), .tac-ls .picker-table td:nth-child(7) { display: none; }
+.tac-ls .picker-table td.pname { white-space: normal; }
+.tac-ls .picker-table td, .tac-ls .picker-table th { padding-left: 3px; padding-right: 3px; }
+.tac-ls .picker-table .stars { font-size: 10.5px; letter-spacing: 0; }
+.tac-ls .picker-table tr { height: 32px; }
+.ls .tac-ls .tac-sheet {
+  left: auto; right: 0; top: 0; bottom: 0; height: auto; width: min(400px, 48vw);
+  border-top: 0; border-left: 2px solid #6c88bf; box-shadow: -10px 0 24px rgba(0, 0, 0, 0.6);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) 0;
+}
+.ls body:has(.tac-sheet) .main { padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+.ls .tac-ls .sheet-row { padding: 7px 10px; }
+
+/* Landscape list beside detail (player profile with his club's squad) */
+.ls-split { display: flex; gap: 6px; height: 100%; min-height: 0; }
+.ls-split > .ls-list { width: 236px; flex: none; display: flex; flex-direction: column; min-height: 0; margin: 0 !important; }
+.ls-split > .ls-detail { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ls-split > .ls-detail > .panel { margin: 0; }
+.ls-rows { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ls-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 34px; gap: 6px; align-items: center; width: 100%; min-height: 34px; padding: 0 6px; text-align: left; background: var(--row); border: 0; border-bottom: 1px solid rgba(0, 0, 0, 0.3); color: #fff; font: inherit; cursor: pointer; }
+.ls-rows li:nth-child(even) .ls-row { background: var(--row-alt); }
+.ls-rows .ls-row.on { background: var(--row-me); color: var(--yellow); }
+.ls-row .ls-no { color: var(--muted); font-size: 11px; text-align: right; }
+.ls-row .ls-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-row .ls-pos { color: var(--muted); font-size: 11px; }
+.ls-row .ls-con { font-size: 11px; text-align: right; color: var(--muted); }
+.ls-row .ls-con.low { color: var(--warn); font-weight: bold; }
+.ls .ls-detail .player-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.ls .ls-detail .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ls .ls-detail .attr-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ls .ls-detail .player-head { padding: 5px 10px; }
+.ls .ls-detail .player-head h3 { font-size: 17px; }
+.ls .run-tog svg, .ls .rbadge svg { transform: rotate(90deg); }
+.ls .ls-detail .player-grid > :nth-child(2) { order: -1; }
+/* Very short screens (browser bars showing): Continue must always fit, so the strip tightens and drops the date */
+@media (max-height: 380px) {
+  .ls .rail-date { display: none; }
+  .ls .rail-btn { min-height: 28px; font-size: 9px; }
+  .ls .rail-btn svg { width: 15px; height: 15px; }
+  .ls .rail-go { min-height: 42px; }
+  .ls .pitch-h .token { width: 62px; }
+  .ls .pitch-h .token .tname { max-width: 62px; font-size: 9.5px; }
+  .ls .pitch-h .token .shirt { min-width: 20px; height: 17px; font-size: 10px; }
+  .ls .ls-match .sb-team { font-size: 14px; padding: 2px 8px; }
+  .ls .ls-match .sb-score { font-size: 22px; }
+  .ls .ls-live-left .lm-stage { min-height: 52px; }
+}
+.more-menu .search-results { left: 0; right: 0; width: auto; }
