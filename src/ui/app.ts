@@ -24,6 +24,7 @@ import { cupActions, cupsScreen } from './cupui.js';
 import { stadiumActions } from './stadiumui.js';
 import { intlActions, intlChangeActions, intlScreen, nationScreen } from './intlui.js';
 import { confirmModal } from './modal.js';
+import { fullScreenPanel, fullScreenPrompt } from './fullscreen.js';
 import { describeSave, gunzip, gzip, makeSaveFile, offerFile, parseSaveFile, savePanel as savePanelHtml } from './saveio.js';
 
 const SAVE_KEY = 'touchline.save.v3';
@@ -169,7 +170,7 @@ function modeScreen(): string {
         </button>
       </div>
     </section>
-    <section class="panel"><div class="pad">${savePanelHtml(false)}</div></section>
+    <section class="panel"><div class="pad">${savePanelHtml(false)}${fullScreenPanel()}</div></section>
     <p class="disclaimer">This is an unofficial fan game with no connection to any league, club or player. Flying Ants Mode is a fictional scenario: none of it has happened.</p>
   </div>`;
 }
@@ -465,6 +466,7 @@ const coreActions: Record<string, Action> = {
     } else kickoff();
   },
   kickoff: () => kickoff(),
+  fullscreen: () => fullScreenPrompt({ auto: false, hasGame: !!game, toast }),
   'kickoff-confirm': () => {
     ui.confirm = null;
     startLiveMatch(ctx);
@@ -679,7 +681,7 @@ async function start(data?: Hot['data']): Promise<void> {
     if (e.key !== ' ' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
     if (t?.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (document.getElementById('confirm-modal')) return;
+    if (document.querySelector('.modal-back')) return;
     const btn = document.querySelector<HTMLButtonElement>('.btn.continue, .rail-go');
     if (!game || !btn || btn.disabled) return;
     e.preventDefault();
@@ -689,7 +691,7 @@ async function start(data?: Hot['data']): Promise<void> {
   document.addEventListener('keyup', (e) => {
     if (e.key !== ' ') return;
     const t = e.target as HTMLElement | null;
-    if (!t?.closest('input, textarea, select, [contenteditable="true"]') && !document.getElementById('confirm-modal') && game) e.preventDefault();
+    if (!t?.closest('input, textarea, select, [contenteditable="true"]') && !document.querySelector('.modal-back') && game) e.preventDefault();
   });
   window.claude?.hot?.snapshot?.(() => ({ game, ui: { ...ui, screen: ui.screen === 'match' ? 'inbox' : ui.screen } }));
   // Turning the phone switches between the normal layout and the landscape one.
@@ -698,7 +700,11 @@ async function start(data?: Hot['data']): Promise<void> {
     keepScroll = false;
     render();
   });
+  // Going in or out of full screen changes the screen's size and the Club Info note.
+  document.addEventListener('fullscreenchange', () => render());
   render();
+  // On a phone with the address bar showing, offer full screen when the game opens.
+  fullScreenPrompt({ auto: true, hasGame: !!game, toast });
 }
 
 const hot = window.claude?.hot;

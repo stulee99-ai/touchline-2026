@@ -458,10 +458,16 @@ function applyOutcome(state: GameState, fixture: Fixture, out: MatchOutcome): vo
     if (!p) continue;
     const side = r.lineups[0].includes(p.id) || r.events.some((e) => e.kind === 'sub' && e.otherId === p.id && e.side === 0) ? 0 : 1;
     const started = r.lineups[side].includes(p.id);
+    // Minutes: from kick-off or the minute he came on, to the end or the minute he went off (or was sent off).
+    const full = r.aet ? 120 : 90;
+    const on = started ? 0 : Math.min(full, r.events.find((e) => e.kind === 'sub' && e.otherId === p.id)?.minute ?? full);
+    const offAt = r.events.find((e) => (e.kind === 'sub' || e.kind === 'red') && e.playerId === p.id)?.minute;
+    const mins = Math.max(1, Math.min(full, offAt ?? full) - on);
     each(p, (s) => {
       if (started) s.apps++;
       else s.subApps++;
       s.ratingSum += rating;
+      s.mins = (s.mins ?? 0) + mins;
     });
     p.form.push(rating);
     if (p.form.length > 5) p.form.shift();

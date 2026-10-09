@@ -166,33 +166,104 @@ export function generateAttributes(rng: Rng, role: Role, ca: number, age: number
   return a;
 }
 
+/** Attributes that are character rather than ability: they don't grow with training. */
+const CHARACTER: AttrKey[] = ['determination', 'aggression', 'naturalFitness'];
+
+/**
+ * What a player of this role and ability typically looks like: the same profile new players are generated
+ * with (key attributes a little above his level, the rest a few points below, youngsters rawer mentally).
+ */
+function profileValue(p: Player, k: AttrKey, role: Role, level: number): number {
+  const w = ROLE_WEIGHTS[role][k] ?? 0;
+  // His own make-up: fixed per player and attribute, the same spread real players are generated with.
+  const h1 = (hashString(`grow:${p.id}:${k}`) % 10000) / 10000;
+  const h2 = (hashString(`grow2:${p.id}:${k}`) % 10000) / 10000;
+  const own = Math.sqrt(-2 * Math.log(Math.max(1e-6, h1))) * Math.cos(2 * Math.PI * h2) * 1.9;
+  const age = p.age;
+  let v = level + OFFSETS[w] + own;
+  if (age <= 20 && (k === 'decisions' || k === 'composure' || k === 'anticipation' || k === 'positioning')) v -= 1.5;
+  return v;
+}
+
 /**
  * Change a player's ability by `delta` CA points by nudging attributes.
- * Young players grow physically and technically, older players lose physique.
+ * Growth fills the gaps to the profile of a player at his new level, so youngsters grow into rounded
+ * footballers (key attributes lead, the rest follow) instead of 20s in a few and single figures elsewhere.
+ * Older players lose physique first.
  */
 export function shiftAbility(rng: Rng, p: Player, delta: number): void {
   const role = bestRole(p);
   const w = ROLE_WEIGHTS[role];
+  const target = p.ca + delta;
+  if (delta > 0) {
+    const pool = role === 'GK' ? [...GOALKEEPING, ...MENTAL, ...PHYSICAL] : [...TECHNICAL, ...MENTAL, ...PHYSICAL];
+    const keys = pool.filter((k) => !CHARACTER.includes(k) && (k !== 'flair' || role === 'AW' || role === 'AM' || (w[k] ?? 0) > 0));
+    const level = target / 10;
+    let guard = 0;
+    while (guard++ < 2000) {
+      if (computeCA(p) >= target) break;
+      const weights = keys.map((k) => {
+        if (p.attrs[k] >= 20) return 0;
+        const gap = profileValue(p, k, role, level) - p.attrs[k];
+        return gap > 0 ? gap ** 1.5 + 0.1 : (w[k] ?? 0) > 0 ? 0.08 : 0.01;
+      });
+      const k = keys[rng.weighted(weights)];
+      p.attrs[k] = clamp(p.attrs[k] + 1, 1, 20);
+    }
+    p.ca = computeCA(p);
+    return;
+  }
   const keys = [...TECHNICAL, ...MENTAL, ...PHYSICAL, ...(role === 'GK' ? GOALKEEPING : [])].filter(
     (k) => k !== 'determination' && k !== 'aggression',
   );
-  const target = p.ca + delta;
   let guard = 0;
   while (guard++ < 200) {
     const cur = computeCA(p);
-    if (delta > 0 ? cur >= target : cur <= target) break;
+    if (cur <= target) break;
     const weights = keys.map((k) => {
       let wt = 0.3 + (w[k] ?? 0);
-      if (delta < 0 && PHYSICAL.includes(k)) wt += 2.5;
-      if (delta > 0 && p.age >= 27 && MENTAL.includes(k)) wt += 1;
-      if (delta > 0 && p.attrs[k] >= 20) wt = 0;
-      if (delta < 0 && p.attrs[k] <= 1) wt = 0;
+      if (PHYSICAL.includes(k)) wt += 2.5;
+      if (p.attrs[k] <= 1) wt = 0;
       return wt;
     });
     const k = keys[rng.weighted(weights)];
-    p.attrs[k] = clamp(p.attrs[k] + (delta > 0 ? 1 : -1), 1, 20);
+    p.attrs[k] = clamp(p.attrs[k] - 1, 1, 20);
   }
   p.ca = computeCA(p);
+}
+
+/** Spread of a player's outfield attributes (character ones left out): real players sit around 2.8. */
+export function attributeSpread(p: Player): number {
+  const keys = [...TECHNICAL, ...MENTAL, ...PHYSICAL].filter((k) => !CHARACTER.includes(k) && k !== 'flair');
+  const v = keys.map((k) => p.attrs[k]);
+  const m = v.reduce((a, b) => a + b, 0) / v.length;
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+}
+
+/**
+ * Round out a lopsided player (a regen grown under the old development rules): pull every attribute most
+ * of the way to the profile of a player of his role and ability, then settle the key attributes so his
+ * overall ability is exactly what it was. Keepers and real players with a normal spread are left alone.
+ */
+export function roundOut(rng: Rng, p: Player): boolean {
+  const role = bestRole(p);
+  if (role === 'GK' || attributeSpread(p) <= 4.2) return false;
+  const before = p.ca;
+  const level = before / 10;
+  const keys = [...TECHNICAL, ...MENTAL, ...PHYSICAL].filter((k) => !CHARACTER.includes(k) && (k !== 'flair' || role === 'AW' || role === 'AM'));
+  for (const k of keys) p.attrs[k] = clamp(Math.round(p.attrs[k] * 0.3 + profileValue(p, k, role, level) * 0.7), 1, 20);
+  const w = ROLE_WEIGHTS[role];
+  const roleKeys = Object.keys(w) as AttrKey[];
+  let guard = 0;
+  while (computeCA(p) !== before && guard++ < 400) {
+    const up = computeCA(p) < before;
+    const pick = roleKeys.filter((k) => (up ? p.attrs[k] < 20 : p.attrs[k] > 1));
+    if (!pick.length) break;
+    const k = pick[rng.weighted(pick.map((x) => w[x] ?? 1))];
+    p.attrs[k] += up ? 1 : -1;
+  }
+  p.ca = computeCA(p);
+  return true;
 }
 
 /**

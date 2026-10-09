@@ -17,7 +17,9 @@ import { confirmModal, type ConfirmSpec } from './modal.js';
 import { clubLink, dateOf, panel, playerLink, posOrder, primaryPos, segs } from './screens.js';
 import { abilityStars } from './scoutui.js';
 import { compLink } from './cupui.js';
-import { estimatedCA } from '../engine/scouting.js';
+import { attrRange, estimatedCA } from '../engine/scouting.js';
+import { ATTR_LABEL, GOALKEEPING, MENTAL, PHYSICAL, TECHNICAL } from '../engine/attributes.js';
+import type { AttrKey } from '../engine/types.js';
 
 /**
  * Transfers and money: the market screen, the finances screen, and the contract and
@@ -58,22 +60,33 @@ function windowLine(g: GameState): string {
 
 /** Wage and contract lines used on several screens. */
 function contractCell(g: GameState, p: Player): string {
-  return `${p.contractEnd}${p.contractEnd <= g.season + 1 ? ' <span class="chip">ends</span>' : ''}`;
+  return `Jun ${p.contractEnd}${p.contractEnd <= g.season + 1 ? ' <span class="chip">ends</span>' : ''}`;
 }
 
 /* ───────────────────────── Transfers screen ───────────────────────── */
 
-function playerRows(g: GameState, list: Player[]): string {
+function playerRows(g: GameState, list: Player[], attrs: AttrKey[] = []): string {
   return list.map((p) => {
     const c = p.clubId ? club(g, p.clubId) : null;
+    const ac = attrs.map((k) => { const [lo, hi] = attrRange(g, p, k); return `<td class="n attr-c${lo === hi ? '' : ' est'}" title="${ATTR_LABEL[k]}${lo === hi ? '' : ': your estimate'}">${lo === hi ? lo : `${lo}–${hi}`}</td>`; }).join('');
     return `<tr><td>${playerLink(p)} ${statusChips(p)}${listedXs(p)}</td><td class="n">${p.age}</td><td class="hide-xs">${esc(pos(p))}</td><td class="hide-sm">${c ? clubLink(g, c.id) : '<i>Free agent</i>'}</td>
-      <td>${abilityStars(g, p)}</td><td class="n money">${fmtMoney(valueOf(g, p))}</td><td class="n hide-sm">${fmtWage(p.wage)}</td><td class="n hide-sm">${c ? contractCell(g, p) : '-'}</td><td class="hide-xs">${statusTag(g, p)}</td></tr>`;
+      <td>${abilityStars(g, p)}</td>${ac}<td class="n money">${fmtMoney(valueOf(g, p))}</td><td class="n">${fmtWage(p.wage)}</td><td class="n">${c ? contractCell(g, p) : '-'}</td><td class="hide-xs">${statusTag(g, p)}</td></tr>`;
   }).join('');
 }
 
-function tableHead(sort?: string): string {
-  const h = (k: string, label: string, cls = '') => `<th class="${cls}${sort === k ? ' sorted' : ''}">${sort !== undefined ? `<button data-act="tf-sort" data-k="${k}">${label}${sort === k ? ' ▼' : ''}</button>` : label}</th>`;
-  return `<thead><tr><th>Name</th>${h('age', 'Age', 'n ')}<th class="hide-xs">Position</th><th class="hide-sm">Club</th>${h('ca', 'Ability')}${h('value', 'Value', 'n ')}${h('wage', 'Wage', 'n hide-sm ')}<th class="n hide-sm">Contract</th><th class="hide-xs"></th></tr></thead>`;
+/** Short headings for the attribute columns. */
+const ATTR_SHORT: Partial<Record<AttrKey, string>> = {
+  acceleration: 'Acc', aggression: 'Agg', agility: 'Agi', anticipation: 'Ant', composure: 'Cmp', creativity: 'Cre', crossing: 'Cro',
+  decisions: 'Dec', determination: 'Det', dribbling: 'Dri', finishing: 'Fin', flair: 'Fla', heading: 'Hea', jumping: 'Jum',
+  longShots: 'Lon', marking: 'Mar', naturalFitness: 'Nat', offTheBall: 'OtB', pace: 'Pac', passing: 'Pas', positioning: 'Pos',
+  setPieces: 'Set', stamina: 'Sta', strength: 'Str', tackling: 'Tck', teamwork: 'Tea', technique: 'Tec', workRate: 'Wor',
+  aerialAbility: 'Aer', handling: 'Han', oneOnOnes: '1v1', reflexes: 'Ref',
+};
+
+function tableHead(sort?: string, attrs: AttrKey[] = []): string {
+  const h = (k: string, label: string, cls = '', title = '') => `<th class="${cls}${sort === k ? ' sorted' : ''}"${title ? ` title="${title}"` : ''}>${sort !== undefined ? `<button data-act="tf-sort" data-k="${k}">${label}${sort === k ? ' ▼' : ''}</button>` : label}</th>`;
+  const ah = attrs.map((k) => h(`a:${k}`, ATTR_SHORT[k] ?? ATTR_LABEL[k], 'n ', ATTR_LABEL[k])).join('');
+  return `<thead><tr><th>Name</th>${h('age', 'Age', 'n ')}<th class="hide-xs">Position</th><th class="hide-sm">Club</th>${h('ca', 'Ability')}${ah}${h('value', 'Value', 'n ')}${h('wage', 'Wage', 'n ')}${h('contract', 'Contract', 'n ', 'Contract ends (June)')}<th class="hide-xs"></th></tr></thead>`;
 }
 
 /** Columns for the transfer-list and free-agent tables: click a heading to sort. */
@@ -85,8 +98,8 @@ function marketCols(g: GameState, tagListed = true): SCol[] {
     { key: 'club', label: 'Club', cls: 'hide-sm', val: (p) => (p.clubId ? club(g, p.clubId).name : ''), html: (p) => (p.clubId ? clubLink(g, p.clubId) : '<i>Free agent</i>') },
     { key: 'ca', label: 'Ability', val: (p) => estimatedCA(g, p), html: (p) => abilityStars(g, p) },
     { key: 'value', label: 'Value', num: true, cls: 'money', val: (p) => valueOf(g, p), html: (p) => fmtMoney(valueOf(g, p)) },
-    { key: 'wage', label: 'Wage', num: true, cls: 'hide-sm', val: (p) => p.wage, html: (p) => fmtWage(p.wage) },
-    { key: 'contract', label: 'Contract', num: true, cls: 'hide-sm', val: (p) => (p.clubId ? p.contractEnd : 0), html: (p) => (p.clubId ? contractCell(g, p) : '-') },
+    { key: 'wage', label: 'Wage', num: true, val: (p) => p.wage, html: (p) => fmtWage(p.wage) },
+    { key: 'contract', label: 'Contract', num: true, val: (p) => (p.clubId ? p.contractEnd : 0), html: (p) => (p.clubId ? contractCell(g, p) : '-') },
     { key: 'status', label: '', cls: 'hide-xs', val: (p) => statusTag(g, p).length, html: (p) => statusTag(g, p) },
   ];
 }
@@ -107,7 +120,16 @@ function searchTab(ctx: Ctx): string {
     <label>Max value ${opt('maxValue', tf.maxValue, [[0, 'Any'], [250e3, '£250k'], [500e3, '£500k'], [1e6, '£1m'], [2e6, '£2m'], [3e6, '£3m'], [5e6, '£5m'], [7.5e6, '£7.5m'], [10e6, '£10m'], [15e6, '£15m'], [20e6, '£20m'], [30e6, '£30m'], [40e6, '£40m'], [60e6, '£60m'], [80e6, '£80m'], [100e6, '£100m'], [150e6, '£150m']])}</label>
     <label>Max age <input class="cm age-in" type="number" inputmode="numeric" min="15" max="45" step="1" value="${tf.maxAge || ''}" placeholder="Any" autocomplete="off" data-change="tf" data-key="maxAge" aria-label="Maximum age"></label>
   </div>`;
+  // Up to five attributes, each with a minimum. Judged on what you know: the middle of each scouting range.
+  const attrs = (tf.attrs ?? []).filter(([k]) => k in ATTR_LABEL).slice(0, 5) as [AttrKey, number][];
+  const attrGroups: [string, AttrKey[]][] = [['Technical', TECHNICAL], ['Mental', MENTAL], ['Physical', PHYSICAL], ['Goalkeeping', GOALKEEPING]];
+  const attrSelect = (i: number, cur: string) => `<select class="cm" data-change="tf-attr" data-i="${i}" aria-label="Attribute ${i + 1}">${attrGroups.map(([gl, ks]) => `<optgroup label="${gl}">${ks.map((k) => `<option value="${k}"${k === cur ? ' selected' : ''}>${ATTR_LABEL[k]}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  const minSelect = (i: number, cur: number) => `<select class="cm" data-change="tf-attr-min" data-i="${i}" aria-label="Minimum for attribute ${i + 1}">${Array.from({ length: 20 }, (_, j) => j + 1).map((v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v}+</option>`).join('')}</select>`;
+  const attrRows = attrs.map(([k, min], i) => `<span class="tf-attr">${attrSelect(i, k)}${minSelect(i, min)}<button class="btn small ghost" data-act="tf-attr-del" data-i="${i}" aria-label="Remove ${ATTR_LABEL[k]}">✕</button></span>`).join('');
+  const attrBox = `<div class="tf-attrs"><span class="tf-attrs-label">Attributes</span>${attrRows}${attrs.length < 5 ? `<button class="btn small" data-act="tf-attr-add">+ Add attribute${attrs.length ? '' : ' (up to 5)'}</button>` : ''}${attrs.length ? '<button class="link small" data-act="tf-attr-clear">Clear</button>' : ''}
+    ${attrs.length ? '<span class="small-note tf-attrs-note">Judged on what you know: the middle of each range your scouts give. Ranges (12–16) are estimates; scout a player to be sure.</span>' : ''}</div>`;
   const name = tf.name.trim().toLowerCase();
+  const known = (p: Player, k: AttrKey) => { const [lo, hi] = attrRange(g, p, k); return (lo + hi) / 2; };
   let list = Object.values(g.players).filter((p) => {
     if (p.clubId === g.userClubId || isExtPlayer(p)) return false;
     if (tf.pos.startsWith('p:')) {
@@ -118,15 +140,33 @@ function searchTab(ctx: Ctx): string {
     if (tf.league === 'free' ? p.clubId !== null : tf.league !== 'all' && (!p.clubId || club(g, p.clubId).leagueId !== tf.league)) return false;
     if (tf.maxAge && p.age > tf.maxAge) return false;
     if (name && !fullName(p).toLowerCase().includes(name)) return false;
+    for (const [k, min] of attrs) if (known(p, k) < min) return false;
     return true;
   });
   const val = new Map(list.map((p) => [p.id, valueOf(g, p)]));
   if (tf.maxValue) list = list.filter((p) => val.get(p.id)! <= tf.maxValue);
-  const key = tf.sort;
-  list.sort((a, b) => key === 'age' ? a.age - b.age || estimatedCA(g, b) - estimatedCA(g, a) : key === 'ca' ? estimatedCA(g, b) - estimatedCA(g, a) : key === 'wage' ? b.wage - a.wage : val.get(b.id)! - val.get(a.id)!);
-  const shown = list.slice(0, 60);
-  return `${filters}<p class="pad small-note">${list.length.toLocaleString('en-GB')} players match${list.length > 60 ? '; showing the top 60' : ''}. Click a name to see him and make an offer.</p>
-    <div class="scroll"><table class="grid market">${tableHead(key)}<tbody>${playerRows(g, shown) || '<tr><td colspan="9" class="pad">Nobody matches.</td></tr>'}</tbody></table></div>`;
+  const key = tf.sort as string;
+  const sortAttr = key.startsWith('a:') ? (key.slice(2) as AttrKey) : null;
+  list.sort((a, b) => sortAttr ? known(b, sortAttr) - known(a, sortAttr) || estimatedCA(g, b) - estimatedCA(g, a)
+    : key === 'age' ? a.age - b.age || estimatedCA(g, b) - estimatedCA(g, a)
+    : key === 'ca' ? estimatedCA(g, b) - estimatedCA(g, a)
+    : key === 'wage' ? b.wage - a.wage
+    : key === 'contract' ? (a.clubId ? a.contractEnd : 0) - (b.clubId ? b.contractEnd : 0) || val.get(b.id)! - val.get(a.id)!
+    : val.get(b.id)! - val.get(a.id)!);
+  // Pages of 60, all the way through.
+  const per = 60;
+  const pages = Math.max(1, Math.ceil(list.length / per));
+  const page = Math.min(Math.max(0, ctx.ui.tfPage ?? 0), pages - 1);
+  const shown = list.slice(page * per, page * per + per);
+  const from = list.length ? page * per + 1 : 0;
+  const to = Math.min(list.length, (page + 1) * per);
+  const pager = pages > 1
+    ? `<div class="tf-pager" role="navigation" aria-label="Pages"><button class="btn small" data-act="tf-page" data-p="0" ${page === 0 ? 'disabled' : ''} aria-label="First page">«</button><button class="btn small" data-act="tf-page" data-p="${page - 1}" ${page === 0 ? 'disabled' : ''}>◄ Previous</button>
+        <span class="tf-pageno">Page <b>${page + 1}</b> of ${pages.toLocaleString('en-GB')}</span>
+        <button class="btn small" data-act="tf-page" data-p="${page + 1}" ${page >= pages - 1 ? 'disabled' : ''}>Next ►</button><button class="btn small" data-act="tf-page" data-p="${pages - 1}" ${page >= pages - 1 ? 'disabled' : ''} aria-label="Last page">»</button></div>`
+    : '';
+  return `${filters}${attrBox}<p class="pad small-note">${list.length.toLocaleString('en-GB')} players match${list.length > per ? `; showing ${from.toLocaleString('en-GB')}–${to.toLocaleString('en-GB')}` : ''}. Click a name to see him and make an offer.</p>
+    ${pager}<div class="scroll"><table class="grid market">${tableHead(key, attrs.map(([k]) => k))}<tbody>${playerRows(g, shown, attrs.map(([k]) => k)) || `<tr><td colspan="${9 + attrs.length}" class="pad">Nobody matches.</td></tr>`}</tbody></table></div>${pager}`;
 }
 
 function listedTab(ctx: Ctx): string {
@@ -527,7 +567,33 @@ export const marketActions: Record<string, Action> = {
   },
   'tf-tab': (ctx, el) => { ctx.ui.transferTab = el.dataset.t as 'search'; ctx.render(); },
   'tf-listed-kind': (ctx, el) => { ctx.ui.listedKind = el.dataset.k as 'all'; ctx.render(); },
-  'tf-sort': (ctx, el) => { ctx.ui.tf = { ...DEFAULT_TF, ...ctx.ui.tf, sort: el.dataset.k as 'value' }; ctx.render(); },
+  'tf-sort': (ctx, el) => { ctx.ui.tf = { ...DEFAULT_TF, ...ctx.ui.tf, sort: el.dataset.k as 'value' }; ctx.ui.tfPage = 0; ctx.render(); },
+  'tf-page': (ctx, el) => {
+    ctx.ui.tfPage = Math.max(0, Number(el.dataset.p) || 0);
+    ctx.render();
+    document.querySelector('.tf-pager')?.scrollIntoView({ block: 'nearest' });
+  },
+  'tf-attr-add': (ctx) => {
+    const tf = { ...DEFAULT_TF, ...ctx.ui.tf };
+    const used = new Set((tf.attrs ?? []).map(([k]) => k));
+    const next = (['pace', 'passing', 'finishing', 'tackling', 'decisions', 'technique', 'strength', 'stamina'] as string[]).find((k) => !used.has(k)) ?? 'pace';
+    ctx.ui.tf = { ...tf, attrs: [...(tf.attrs ?? []), [next, 12] as [string, number]].slice(0, 5) };
+    ctx.ui.tfPage = 0;
+    ctx.render();
+  },
+  'tf-attr-del': (ctx, el) => {
+    const tf = { ...DEFAULT_TF, ...ctx.ui.tf };
+    const i = Number(el.dataset.i);
+    ctx.ui.tf = { ...tf, attrs: (tf.attrs ?? []).filter((_, j) => j !== i), sort: tf.sort.startsWith('a:') ? 'value' : tf.sort };
+    ctx.ui.tfPage = 0;
+    ctx.render();
+  },
+  'tf-attr-clear': (ctx) => {
+    const tf = { ...DEFAULT_TF, ...ctx.ui.tf };
+    ctx.ui.tf = { ...tf, attrs: [], sort: tf.sort.startsWith('a:') ? 'value' : tf.sort };
+    ctx.ui.tfPage = 0;
+    ctx.render();
+  },
   'tf-league': (ctx, el) => { ctx.ui.compId = el.dataset.c === 'all' ? undefined : el.dataset.c; ctx.render(); },
   'deal-open': (ctx, el) => { ctx.ui.deal = el.dataset.d as 'bid'; ctx.ui.dealMsg = null; ctx.render(); },
   'deal-close': (ctx) => { ctx.ui.deal = null; ctx.render(); },
@@ -691,6 +757,21 @@ export const marketChangeActions: Record<string, (ctx: Ctx, el: HTMLSelectElemen
     const cur = { ...DEFAULT_TF, ...ctx.ui.tf } as Record<string, unknown>;
     cur[key] = key === 'maxValue' ? Number(el.value) : key === 'maxAge' ? Math.max(0, Math.min(45, Math.floor(Number(el.value)) || 0)) : key === 'natural' ? (el as unknown as HTMLInputElement).checked : el.value;
     ctx.ui.tf = cur as NonNullable<Ctx['ui']['tf']>;
+    ctx.ui.tfPage = 0;
+    ctx.render();
+  },
+  'tf-attr': (ctx, el) => {
+    const tf = { ...DEFAULT_TF, ...ctx.ui.tf };
+    const i = Number(el.dataset.i);
+    ctx.ui.tf = { ...tf, attrs: (tf.attrs ?? []).map((x, j) => (j === i ? [el.value, x[1]] as [string, number] : x)) };
+    ctx.ui.tfPage = 0;
+    ctx.render();
+  },
+  'tf-attr-min': (ctx, el) => {
+    const tf = { ...DEFAULT_TF, ...ctx.ui.tf };
+    const i = Number(el.dataset.i);
+    ctx.ui.tf = { ...tf, attrs: (tf.attrs ?? []).map((x, j) => (j === i ? [x[0], Number(el.value)] as [string, number] : x)) };
+    ctx.ui.tfPage = 0;
     ctx.render();
   },
 };

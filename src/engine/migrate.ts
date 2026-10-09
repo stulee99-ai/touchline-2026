@@ -1,3 +1,4 @@
+import { roundOut } from './attributes.js';
 import { initClubFinance, initContract } from './finance.js';
 import { KICKOFFS } from './fixtures.js';
 import { SAVE_VERSION } from './generate.js';
@@ -106,6 +107,16 @@ export function migrateSave(raw: unknown): GameState | null {
     if (old.nonLeague) g.pools.ENG = old.nonLeague;
     delete old.nonLeague;
     g.version = 14;
+  }
+  if (g.version === 14) {
+    // Minutes played weren't counted before: estimate this season's so far, so per-90 figures make sense at once.
+    // Regens grown under the old development rules could be all 20s and 2s: round them out, same ability.
+    const rr = new Rng((g.rngState ?? 1) ^ 0x7e9e);
+    for (const p of Object.values(g.players)) {
+      for (const st of [p.stats, p.lstats]) if (st && st.mins === undefined) st.mins = st.apps * 86 + st.subApps * 22;
+      roundOut(rr, p);
+    }
+    g.version = 15;
   }
   return g.version === SAVE_VERSION ? g : null;
 }

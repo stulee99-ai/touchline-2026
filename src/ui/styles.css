@@ -711,6 +711,25 @@ label.check { display: inline-flex; gap: 6px; align-items: center; font-size: 12
 .modal h3 { font-size: 16px; color: var(--yellow); margin-bottom: 8px; }
 .modal p { margin: 6px 0; }
 .modal .row-btns { margin: 12px 0 0; justify-content: flex-end; }
+.modal { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+
+/* Full screen offer */
+.fs-modal { width: min(480px, 100%); }
+.fs-steps { margin: 10px 0 8px; padding-left: 22px; display: grid; gap: 8px; }
+.fs-steps li { line-height: 1.45; }
+.fs-steps b { color: var(--yellow); }
+.fs-ico { width: 17px; height: 17px; vertical-align: -3px; margin: 0 1px; padding: 1px; border-radius: 3px; background: rgba(155, 180, 226, 0.18); color: #9fc1ff; }
+.fs-warn { border-left: 3px solid var(--warn); padding-left: 8px; }
+.fs-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap-reverse; margin-top: 12px; }
+.fs-foot .row-btns { margin: 0 0 0 auto; }
+.fs-never { padding: 6px 2px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 36px; }
+.fs-box { margin-top: 10px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .modal-back { padding: 8px 16px; }
+  .fs-modal { width: min(620px, 100%); }
+  .fs-steps { grid-template-columns: repeat(3, 1fr); gap: 10px; padding-left: 0; list-style-position: inside; }
+  .fs-steps li { padding: 6px 8px; background: rgba(155, 180, 226, 0.08); border: 1px solid rgba(155, 180, 226, 0.18); }
+}
 
 /* Board confidence */
 .board-box { margin: 0 0 10px; padding: 8px 10px; border: 1px solid #000; background: var(--row); }
@@ -1240,3 +1259,45 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
 .tac-ls .tac-pane { overflow: visible; min-height: 0; }
 .tac-ls .lt-tabs { position: sticky; top: 0; z-index: 3; }
 @media (max-height: 380px) { .ls .tac-ls .pitch-h { max-width: 50vw; } }
+
+/* Find Players: attribute filter, attribute columns and pages */
+.tf-attrs { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 10px 0; }
+.tf-attrs-label { color: var(--muted); font-weight: bold; font-size: 12px; }
+.tf-attr { display: inline-flex; gap: 3px; align-items: center; padding: 2px 3px; background: var(--row); border: 1px solid #000; }
+.tf-attr select.cm { min-height: 26px; }
+.tf-attr .btn { padding: 0 6px; min-height: 26px; }
+.tf-attrs-note { flex-basis: 100%; margin: 0; }
+@media (max-width: 600px) {
+  .tf-attrs-label { flex-basis: 100%; }
+  .tf-attr { flex: 1 1 100%; }
+  .tf-attr select.cm:first-child { flex: 1; min-width: 0; }
+}
+.grid td.attr-c { font-weight: bold; color: var(--yellow); }
+.grid td.attr-c.est { font-weight: normal; color: var(--muted); font-size: 11px; }
+.tf-pager { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; padding: 6px 10px; }
+.tf-pageno { padding: 0 8px; color: var(--muted); font-size: 12px; }
+.tf-pager .btn { min-height: 30px; }
+/* Squad screen, Form view */
+.last5 { display: inline-flex; gap: 2px; }
+.last5 i { font-style: normal; font-size: 10.5px; font-weight: bold; min-width: 26px; text-align: center; padding: 0 2px; border: 1px solid #000; }
+.last5 i.r-hi { background: #1f8f3a; color: #fff; }
+.last5 i.r-good { background: #cfdaf0; color: #10244d; }
+.last5 i.r-mid { background: #3b5790; color: #fff; }
+.last5 i.r-low { background: #d23b3b; color: #fff; }
+.form-key { margin: 0; padding-top: 2px; padding-bottom: 4px; }
+/* Squad tables: the name stays in view when the columns scroll sideways */
+.grid.squad th:nth-child(2), .grid.squad td:nth-child(2) { position: sticky; left: 0; z-index: 1; }
+.grid.squad thead th:nth-child(2) { background: var(--head); }
+.grid.squad tbody tr:nth-child(odd) td:nth-child(2) { background: var(--row); }
+.grid.squad tbody tr:nth-child(even) td:nth-child(2) { background: var(--row-alt); }
+/* Player-search tables too: the name stays put while wages and contracts scroll into view */
+.grid.market th:first-child, .grid.market td:first-child { position: sticky; left: 0; z-index: 1; }
+.grid.market thead th:first-child { background: var(--head); }
+.grid.market tbody tr:nth-child(odd) td:first-child { background: var(--row); }
+.grid.market tbody tr:nth-child(even) td:first-child { background: var(--row-alt); }
+@media (max-width: 600px) {
+  /* On a phone the name column stays narrow, so the scrolled columns have room: long names end in "…", chips go underneath */
+  .grid.market td:first-child { max-width: 140px; white-space: normal; line-height: 1.25; }
+  .grid.market td:first-child > .link:first-child { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+}
+.grid.squad tbody tr.mine td:nth-child(2) { background: var(--row-me); }

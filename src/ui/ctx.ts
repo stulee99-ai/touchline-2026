@@ -46,13 +46,17 @@ export interface UiState {
   squadFilter?: 'all' | 'gk' | 'def' | 'mid' | 'att' | 'avail';
   newsFilter?: 'all' | 'result' | 'squad' | 'board';
   /** Squad screen: selection overview or contracts and wages. */
-  squadView?: 'overview' | 'contracts';
+  squadView?: 'overview' | 'form' | 'contracts';
   /** Scouting screen tab. */
   scoutTab?: 'staff' | 'reports' | 'shortlist' | 'hire';
   /** Transfers screen. */
   transferTab?: 'search' | 'listed' | 'free' | 'offers' | 'news';
   listedKind?: 'all' | 'transfer' | 'loan';
-  tf?: { pos: string; league: string; maxValue: number; maxAge: number; sort: 'value' | 'ca' | 'age' | 'wage'; name: string; natural?: boolean };
+  tf?: { pos: string; league: string; maxValue: number; maxAge: number; sort: 'value' | 'ca' | 'age' | 'wage' | 'contract'; name: string; natural?: boolean;
+    /** Up to five attribute minimums, judged on what the manager knows (the middle of each scouting range). */
+    attrs?: [string, number][] };
+  /** Find Players: page shown (0-based). */
+  tfPage?: number;
   /** Player screen: which deal form is open, and the last reply from the other side. */
   deal?: 'bid' | 'loan' | 'renew' | null;
   dealMsg?: string | null;

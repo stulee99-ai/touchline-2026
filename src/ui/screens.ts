@@ -6,6 +6,7 @@ import { banSummary, bookingSummary } from '../engine/discipline.js';
 import { boardSummary, ensureBoard, takeNewJob } from '../engine/board.js';
 import { compareButtons } from './compare.js';
 import { savePanel } from './saveio.js';
+import { fullScreenPanel } from './fullscreen.js';
 import { ARROW_BALL, ARROW_OFF, runControls } from './runs.js';
 import { surgeryPanel, treatedNote } from './injuryui.js';
 import { canTreat } from '../engine/surgery.js';
@@ -223,9 +224,11 @@ export function squad(ctx: Ctx): string {
     { key: 'ast', label: 'Ast', num: true, cls: 'hide-sm', val: (p) => p.stats.assists },
     { key: 'avr', label: 'Av R', title: 'Average rating', num: true, val: (p) => Number(avgRating(p)) || 0, html: avgRating },
   ];
+  const view = ctx.ui.squadView ?? 'overview';
+  if (view === 'form') cols.splice(0, cols.length, ...formCols(xi, bench));
   const key = ctx.ui.sortKey ?? 'sel';
   const dir = ctx.ui.sortDir ?? 1;
-  const col = cols.find((x) => x.key === key) ?? cols[3];
+  const col = cols.find((x) => x.key === key) ?? cols.find((x) => x.key === 'sel') ?? cols[3];
   const shown = c.playerIds.map((id) => g.players[id]).filter((p) => {
     if (filter === 'all') return true;
     if (filter === 'avail') return !p.injury && !p.suspended;
@@ -245,10 +248,40 @@ export function squad(ctx: Ctx): string {
   const avgAge = all.reduce((s, p) => s + p.age, 0) / all.length;
   const extra = `<span class="strip-meta">${all.length} players · avg age ${avgAge.toFixed(1)}${inj ? ` · ${inj} injured` : ''}${sus ? ` · ${sus} suspended` : ''}</span>`;
   const filters = segs([['all', 'All'], ['gk', 'Goalkeepers'], ['def', 'Defenders'], ['mid', 'Midfielders'], ['att', 'Attackers'], ['avail', 'Available']], filter, 'squad-filter', 'f');
-  const view = ctx.ui.squadView ?? 'overview';
-  const views = segs([['overview', 'Overview'], ['contracts', 'Contracts & wages']], view, 'squad-view', 'v');
+  const views = segs([['overview', 'Overview'], ['form', 'Form'], ['contracts', 'Contracts & wages']], view, 'squad-view', 'v');
+  const formNote = view === 'form' ? '<p class="pad small-note form-key">This season, all competitions. <b>Last 5</b>: match ratings, newest on the right. <b>Trend</b>: recent form against his season average. <b>/90</b>: goals and assists per 90 minutes played. <b>CS</b>: clean sheets (keepers).</p>' : '';
   if (view === 'contracts') return panel(c, 'Squad', `<div class="pad-top">${views}</div>${squadContracts(ctx)}`, extra);
-  return panel(c, 'Squad', `<div class="pad-top">${views}${filters}</div><div class="scroll"><table class="grid squad"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`, extra);
+  return panel(c, 'Squad', `<div class="pad-top">${views}${filters}</div>${formNote}<div class="scroll"><table class="grid squad${view === 'form' ? ' form-view' : ''}"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`, extra);
+}
+
+/** Squad screen, Form view: how each player is playing this season, recent games first. */
+function formCols(xi: number[], bench: number[]): Col[] {
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const season = (p: Player) => { const n = p.stats.apps + p.stats.subApps; return n ? p.stats.ratingSum / n : 0; };
+  const mins = (p: Player) => p.stats.mins ?? p.stats.apps * 86 + p.stats.subApps * 22;
+  const per90 = (p: Player) => { const m = mins(p); return m >= 90 ? ((p.stats.goals + p.stats.assists) * 90) / m : -1; };
+  const rc = (r: number) => (r >= 7.5 ? 'r-hi' : r >= 6.9 ? 'r-good' : r >= 6.4 ? 'r-mid' : 'r-low');
+  const trend = (p: Player) => (p.form.length >= 3 && season(p) ? avg(p.form) - season(p) : 0);
+  const isGk = (p: Player) => (p.pos.GK ?? 0) >= 15;
+  return [
+    { key: 'no', label: 'No', num: true, val: (p) => p.squadNo },
+    { key: 'name', label: 'Name', val: (p) => p.lastName, html: (p) => playerLink(p) + ' ' + statusChips(p) },
+    { key: 'pos', label: 'Pos', val: (p) => posOrder(p), html: (p) => esc(primaryPos(p)) },
+    { key: 'sel', label: 'Sel', title: 'Selection for the next match', val: (p) => (xi.includes(p.id) ? 0 : bench.includes(p.id) ? 1 : 2), html: (p) => (xi.includes(p.id) ? '<span class="chip on">XI</span>' : bench.includes(p.id) ? '<span class="chip">S</span>' : '') },
+    { key: 'last5', label: 'Last 5', title: 'Last five match ratings, newest on the right', val: (p) => avg(p.form), html: (p) => (p.form.length ? `<span class="last5">${p.form.map((r) => `<i class="${rc(r)}">${r.toFixed(1)}</i>`).join('')}</span>` : '<span class="small-note">-</span>') },
+    { key: 'form', label: 'Form', title: 'Average of the last five ratings', num: true, val: (p) => avg(p.form), html: formAvg },
+    { key: 'trend', label: 'Trend', title: 'Recent form against his season average', num: true, val: trend, html: (p) => { const t = trend(p); return p.form.length < 3 ? '-' : t >= 0.25 ? `<b class="c-good" title="+${t.toFixed(2)}">▲</b>` : t <= -0.25 ? `<b class="c-low" title="${t.toFixed(2)}">▼</b>` : '<span class="small-note" title="Steady">–</span>'; } },
+    { key: 'avr', label: 'Av R', title: 'Average rating this season', num: true, val: (p) => Number(avgRating(p)) || 0, html: avgRating },
+    { key: 'apps', label: 'Apps', num: true, val: (p) => p.stats.apps + p.stats.subApps / 100, html: (p) => `${p.stats.apps}${p.stats.subApps ? `(${p.stats.subApps})` : ''}` },
+    { key: 'mins', label: 'Mins', num: true, val: mins, html: (p) => mins(p).toLocaleString('en-GB') },
+    { key: 'gls', label: 'Gls', num: true, val: (p) => p.stats.goals },
+    { key: 'ast', label: 'Ast', num: true, val: (p) => p.stats.assists },
+    { key: 'ga90', label: 'G+A /90', title: 'Goals plus assists per 90 minutes', num: true, val: per90, html: (p) => (per90(p) < 0 ? '-' : per90(p).toFixed(2)) },
+    { key: 'motm', label: 'PoM', title: 'Player of the match awards', num: true, val: (p) => p.stats.motm },
+    { key: 'cs', label: 'CS', title: 'Clean sheets (keepers)', num: true, val: (p) => (isGk(p) ? p.stats.cleanSheets : -1), html: (p) => (isGk(p) ? String(p.stats.cleanSheets) : '-') },
+    { key: 'yel', label: 'Yel', title: 'Yellow cards', num: true, val: (p) => p.stats.yellow, html: (p) => (p.stats.yellow ? `<i class="ic yel"></i> ${p.stats.yellow}` : '0') },
+    { key: 'red', label: 'Red', title: 'Red cards', num: true, val: (p) => p.stats.red, html: (p) => (p.stats.red ? `<i class="ic red"></i> ${p.stats.red}` : '0') },
+  ];
 }
 
 /* ───────────────────────── Player ───────────────────────── */
@@ -997,7 +1030,7 @@ export function clubScreen(ctx: Ctx): string {
         <div><dt>Squad size</dt><dd>${c.playerIds.length}</dd></div>
         <div><dt>Best player</dt><dd>${playerLink(best)}</dd></div>
       </dl>
-      <div>${boardPanel(g)}${savePanel(true)}${reset}</div>
+      <div>${boardPanel(g)}${savePanel(true)}${fullScreenPanel()}${reset}</div>
     </div>
     ${clubCupsHtml(g, c.id)}
     <div class="sub-head">Season history</div>

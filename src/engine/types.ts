@@ -66,6 +66,8 @@ export interface SeasonStats {
   yellow: number;
   red: number;
   cleanSheets: number;
+  /** Minutes played (missing in saves from before it was counted). */
+  mins?: number;
   /** International appearances and goals this season. */
   intlApps?: number;
   intlGoals?: number;

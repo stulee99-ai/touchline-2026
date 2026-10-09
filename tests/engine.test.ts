@@ -7,7 +7,7 @@ import { computeCA } from '../src/engine/attributes.js';
 import { LEAGUES } from '../src/engine/db/index.js';
 import { KICKOFFS, makeFixtures, roundRobin } from '../src/engine/fixtures.js';
 import { completeDay, nextMatchDay, playDay, playUntilUserMatch, seasonOver, startDay, startNewSeason, takeCharge, userNextFixture, userPlaysNext } from '../src/engine/game.js';
-import { defaultTactics, newGame } from '../src/engine/generate.js';
+import { defaultTactics, newGame, SAVE_VERSION as CURRENT_VERSION } from '../src/engine/generate.js';
 import { leagueTable } from '../src/engine/league.js';
 import { MatchSim } from '../src/engine/match.js';
 import { Rng } from '../src/engine/rng.js';
@@ -412,7 +412,7 @@ test('saves: a version 3 career is migrated and plays on', async () => {
   for (const f of old.fixtures) { delete f.weekend; delete f.time; delete f.tbc; f.day = f.weekend ?? f.day; }
   const m = migrateSave(old)!;
   assert.ok(m, 'migrated');
-  assert.equal(m.version, 14);
+  assert.equal(m.version, CURRENT_VERSION);
   assert.deepEqual(m.cups, [], 'cups start next season');
   assert.ok(m.clubs.every((c) => c.finance && c.finance.balance > 0), 'club finances created');
   assert.ok(Object.values(m.players).every((p) => p.clubId === null || p.wage > 0), 'everyone is paid');
@@ -1147,7 +1147,7 @@ test('saves: a version 11 career gets a training plan for the current pre-season
   old.version = 11;
   delete old.clubs[0].training;
   const m = migrateSave(old)!;
-  assert.equal(m.version, 14);
+  assert.equal(m.version, CURRENT_VERSION);
   assert.equal(m.clubs[0].training?.confirmed, m.season);
 });
 
