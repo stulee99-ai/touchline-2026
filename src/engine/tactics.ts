@@ -1,4 +1,4 @@
-import { familiarityFactor, POS_ROLE, roleRating } from './attributes.js';
+import { familiarityFactor, hashString, POS_ROLE, roleRating } from './attributes.js';
 import type { Club, Player, Pos } from './types.js';
 
 export interface FormationDef {
@@ -66,9 +66,27 @@ export function slotRating(p: Player, pos: Pos): number {
 }
 
 /** Selection score: ability in the slot, discounted for tiredness and poor form. */
-function selectionScore(p: Player, pos: Pos): number {
-  const cond = p.condition >= 85 ? 1 : p.condition >= 70 ? 0.93 : 0.8;
-  return slotRating(p, pos) * cond;
+function baseScore(p: Player, pos: Pos, judge = 20): number {
+  const tired = p.condition >= 85 ? 0 : p.condition >= 70 ? 0.07 : 0.2;
+  // A poor judge of players doesn't notice how tired they are as much as a good one.
+  return slotRating(p, pos) * (1 - tired * (0.4 + 0.6 * Math.min(20, judge) / 20));
+}
+
+/** Who is judging: an assistant's id and his judging-players rating (1–20). */
+export interface Judge { id: number; judge: number }
+
+/**
+ * How an assistant sees a player, as a factor on his true worth: 1 for a perfect judge (20), and
+ * up to about ±25% for a poor one. The error is his own opinion of that player and doesn't change
+ * from day to day (he has his favourites), so his picks are steady rather than random.
+ */
+export function misjudge(j: Judge | undefined, playerId: number, salt = ''): number {
+  if (!j || j.judge >= 20) return 1;
+  // Three hashed uniforms make a bell curve with mean 0 and spread about 1.
+  let z = 0;
+  for (let i = 0; i < 3; i++) z += (hashString(`judge:${j.id}:${playerId}:${salt}:${i}`) % 100000) / 100000;
+  z = (z - 1.5) * 2;
+  return 1 + z * 0.16 * ((20 - Math.max(1, j.judge)) / 20);
 }
 
 const SLOT_PRIORITY: Pos[] = ['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'ST', 'AMC', 'ML', 'MR', 'AML', 'AMR'];
@@ -79,6 +97,9 @@ const SLOT_PRIORITY: Pos[] = ['GK', 'DC', 'DL', 'DR', 'DM', 'MC', 'ST', 'AMC', '
  */
 export function autoPickXI(club: Club, players: Record<number, Player>, rest?: Set<number>): number[] {
   const f = getFormation(club.tactics.formation);
+  // The manager's club is picked by his assistant, who sees players only as well as he judges them.
+  const j = club.assistant;
+  const selectionScore = (p: Player, pos: Pos) => baseScore(p, pos, j?.judge ?? 20) * misjudge(j, p.id);
   let pool = club.playerIds.map((id) => players[id]).filter(available);
   // Rested players sit out if there are enough others to pick from.
   if (rest && pool.filter((p) => !rest.has(p.id)).length >= 13) pool = pool.filter((p) => !rest.has(p.id));
@@ -147,8 +168,9 @@ export const MAX_SUB_WINDOWS = 3;
  */
 export function pickBench(club: Club, players: Record<number, Player>, xi: number[]): number[] {
   const rest = club.playerIds.map((id) => players[id]).filter((p) => available(p) && !xi.includes(p.id));
-  const keepers = rest.filter((p) => (p.pos.GK ?? 0) >= 15).sort((a, b) => b.ca - a.ca);
-  const outfield = rest.filter((p) => !(p.pos.GK ?? 0)).sort((a, b) => b.ca - a.ca);
+  const seen = (p: Player) => p.ca * misjudge(club.assistant, p.id);
+  const keepers = rest.filter((p) => (p.pos.GK ?? 0) >= 15).sort((a, b) => seen(b) - seen(a));
+  const outfield = rest.filter((p) => !(p.pos.GK ?? 0)).sort((a, b) => seen(b) - seen(a));
   const bench: Player[] = keepers.slice(0, 1);
   const lines: Pos[][] = [['DC'], ['DL', 'DR'], ['DM', 'MC'], ['ML', 'MR', 'AML', 'AMR', 'AMC'], ['ST']];
   for (const line of lines) {
@@ -189,7 +211,7 @@ export function resolveLineup(club: Club, players: Record<number, Player>): numb
       for (const id of club.playerIds) {
         const c = players[id];
         if (used.has(id) || !available(c)) continue;
-        const s = selectionScore(c, f.slots[i]);
+        const s = baseScore(c, f.slots[i], club.assistant?.judge ?? 20) * misjudge(club.assistant, id);
         if (s > bs) {
           bs = s;
           best = id;

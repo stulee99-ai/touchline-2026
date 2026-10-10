@@ -22,6 +22,7 @@ import { financesScreen, marketActions, marketChangeActions, transfersScreen } f
 import { scoutActions, scoutingScreen } from './scoutui.js';
 import { cupActions, cupsScreen } from './cupui.js';
 import { stadiumActions } from './stadiumui.js';
+import { staffActions } from './staffui.js';
 import { intlActions, intlChangeActions, intlScreen, nationScreen } from './intlui.js';
 import { confirmModal } from './modal.js';
 import { fullScreenPanel, fullScreenPrompt } from './fullscreen.js';
@@ -623,7 +624,7 @@ const saveChangeActions: Record<string, (c: Ctx, el: HTMLSelectElement) => void>
   },
 };
 
-const actions: Record<string, Action> = { ...saveActions, ...injuryActions, ...trainActions, ...compareActions, ...coreActions, ...S.screenActions, ...liveActions, ...setupActions, ...marketActions, ...scoutActions, ...cupActions, ...intlActions, ...stadiumActions };
+const actions: Record<string, Action> = { ...saveActions, ...injuryActions, ...trainActions, ...compareActions, ...coreActions, ...S.screenActions, ...liveActions, ...setupActions, ...marketActions, ...scoutActions, ...cupActions, ...intlActions, ...stadiumActions, ...staffActions };
 
 async function start(data?: Hot['data']): Promise<void> {
   root = document.getElementById('app')!;

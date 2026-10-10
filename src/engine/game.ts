@@ -6,6 +6,7 @@ import { assignSquadNumbers, createPlayer, emptyStats, fillSquad, giveContract, 
 import { internationalDay, intlSummer, newIntlSeason } from './intl.js';
 import { stadiumMonthly, stadiumSeasonEnd } from './stadium.js';
 import { initScouting, learnFromMatch, payScouts, scoutingDay, scoutingSummer } from './scouting.js';
+import { assistantOf, initAssistant, staffMonthly, staffSummer } from './staff.js';
 import { aiListings, contractWarnings, makeFreeAgent, pruneMarket, releaseToFree, summerContracts, summerMarket, transferDay } from './transfers.js';
 import { CONFIRM_AHEAD, confirmKickoffs } from './kickoffs.js';
 import { comp, leagueTable } from './league.js';
@@ -24,7 +25,7 @@ import {
   afterMatchTraining, famWith, holidaySharp, individualWeek, newSeasonTraining, planOf, preseasonStop, scheduleFriendlies, trainingDay,
 } from './training.js';
 import type { Club, Fixture, GameState, Mentality, NewsItem, Player, Pos } from './types.js';
-import { assistantName, debrief } from './analysis.js';
+import { debrief } from './analysis.js';
 
 export function club(state: GameState, id: number): Club {
   if (id > EXT_BASE) return state.extClubs.find((c) => c.id === id)!;
@@ -118,13 +119,12 @@ export function addNews(state: GameState, item: Omit<NewsItem, 'id' | 'season' |
 function debriefNews(state: GameState, f: Fixture): void {
   const d = debrief(state, f);
   if (!d) return;
-  const me = club(state, state.userClubId);
   const r = f.result!;
   const body = [`${d.label}.`, ...d.points, `What worked: ${d.positives.join(' ')}`, `What didn't: ${d.concerns.join(' ')}`, d.nextLabel, ...d.next].join('\n\n');
   addNews(state, {
     kind: 'result',
     title: `Debrief: ${club(state, f.homeId).name} ${r.hg}-${r.ag} ${club(state, f.awayId).name}`,
-    tag: `From ${assistantName(state, me)}, assistant manager`,
+    tag: `From ${assistantOf(state).name}, ${assistantOf(state).caretaker ? 'caretaker assistant' : 'assistant manager'}`,
     body,
     debrief: f.id,
   });
@@ -177,6 +177,7 @@ export function teamSetup(state: GameState, c: Club, opp: Club, home: boolean, f
     ai: !isUser,
     prep: isUser ? { fam: famWith(planOf(state, c), c.tactics.formation), drills: planOf(state, c).drills } : undefined,
     runs: isUser ? c.runs : undefined,
+    assistant: isUser && c.assistant ? { id: c.assistant.id, read: c.assistant.read, judge: c.assistant.judge } : undefined,
   };
 }
 
@@ -276,6 +277,7 @@ function advanceTo(state: GameState, day: number, rng: Rng): void {
       monthlyAccounts(state, month);
       stadiumMonthly(state);
       payScouts(state);
+      staffMonthly(state, rng);
       boardMonthly(state);
     }
     trainingDay(state, rng, d);
@@ -885,6 +887,7 @@ export function startNewSeason(state: GameState): void {
   pruneMarket(state);
   aiListings(state);
   scoutingSummer(state, rng);
+  staffSummer(state);
   state.rngState = rng.state;
 
   const target = boardExpectation(state, userClub(state).id);
@@ -992,6 +995,7 @@ export function takeCharge(state: GameState, clubId: number, managerName: string
   for (const id of c.playerIds) state.players[id].listed = null;
   const rng = new Rng(state.rngState ^ (clubId * 7919));
   initScouting(state, rng);
+  initAssistant(state, rng);
   refreshWageBudget(state, c);
   const target = boardExpectation(state, clubId);
   const first = userNextFixture(state);

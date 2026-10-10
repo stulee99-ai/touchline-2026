@@ -35,6 +35,10 @@ export function pendingDecisions(state: GameState): Decision[] {
     } else if (o.buyerId === me && o.status === 'accepted') {
       const text = o.kind === 'loan'
         ? `${name(state, o.playerId)}: the loan is agreed. Confirm it, or walk away.`
+        : o.kind === 'precontract'
+        ? o.agreed
+          ? `${name(state, o.playerId)} has agreed the terms of a pre-contract. Sign it, or walk away.`
+          : `${name(state, o.playerId)} is willing to talk about a pre-contract. Offer him terms, or walk away.`
         : o.agreed
         ? `${name(state, o.playerId)} has agreed terms. Confirm the signing, or walk away.`
         : o.sellerId

@@ -5,7 +5,8 @@ import {
   clubWage, contractYears, fmtMoney, fmtWage, M, niceMoney, niceWage, playerValue, spendingRule, squadCost, wageBill,
   yearsLeft, expectedRevenue, SQUAD_COST_LIMIT, refreshWageBudget,
 } from './finance.js';
-import { addNews, club, dateOf, userClub } from './game.js';
+import { addNews, club, dateOf, seasonOver, userClub } from './game.js';
+import { COUNTRY_NAMES, leagueCountry } from './levels.js';
 import { assignSquadNumbers } from './generate.js';
 import { clamp, type Rng } from './rng.js';
 import { autoPickXI, available, getFormation, resolveLineup, slotRating } from './tactics.js';
@@ -503,12 +504,13 @@ export function proposeTerms(state: GameState, offerId: number, wage: number, ye
   const p = state.players[o.playerId];
   const me = userClub(state);
   const cl = clauseWage(state, p, me, clause, o.fee);
-  const demand = niceWage(wageDemand(state, p, me) * cl.mult);
+  // A player coming on a free knows there's no fee to pay, and asks for some of it in wages.
+  const demand = niceWage(wageDemand(state, p, me) * cl.mult * (o.kind === 'precontract' ? 1.1 : 1));
   o.demand = { wage: demand, years: preferredYears(p) };
   o.clause = clause;
   o.agreed = false;
   o.talks = (o.talks ?? 0) + 1;
-  const blocked = signingBlocked(state, me, o.fee, wage);
+  const blocked = o.kind === 'precontract' ? preContractBlocked(state, me, wage) : signingBlocked(state, me, o.fee, wage);
   if (blocked) return blocked;
   // Shorter or longer deals than he wants cost a little more.
   const need = demand * (1 + Math.abs(years - preferredYears(p)) * 0.04);
@@ -518,7 +520,9 @@ export function proposeTerms(state: GameState, offerId: number, wage: number, ye
     o.clauseFee = cl.fee;
     // His yes isn't the signature: the manager gets a final say before the fee and wages are committed.
     o.agreed = true;
-    o.note = `${p.lastName} has agreed terms: ${fmtWage(o.wage)} for ${years} year${years > 1 ? 's' : ''}. Confirm to sign him.`;
+    o.note = o.kind === 'precontract'
+      ? `${p.lastName} has agreed terms: ${fmtWage(o.wage)} for ${years} year${years > 1 ? 's' : ''} from 1 July. Confirm to sign the pre-contract.`
+      : `${p.lastName} has agreed terms: ${fmtWage(o.wage)} for ${years} year${years > 1 ? 's' : ''}. Confirm to sign him.`;
   } else if (o.talks >= 3 && wage < need * 0.9) {
     o.status = 'collapsed';
     o.note = `${p.lastName} has walked away from talks. He wanted ${fmtWage(niceWage(need))}.`;
@@ -553,6 +557,7 @@ function finishUserSigning(state: GameState, o: Offer): void {
 export function confirmSigning(state: GameState, offerId: number): Offer | string {
   const o = state.offers.find((x) => x.id === offerId);
   if (!o || o.status !== 'accepted' || !o.agreed || o.wage === undefined || o.years === undefined) return 'There is no agreement to confirm.';
+  if (o.kind === 'precontract') return signPreContract(state, o);
   const p = state.players[o.playerId];
   const me = userClub(state);
   const from = o.sellerId || null;
@@ -590,6 +595,142 @@ export function approachFreeAgent(state: GameState, playerId: number): Offer | s
   const existing = state.offers.find((o) => o.playerId === playerId && o.buyerId === me.id && o.status === 'accepted');
   if (existing) return existing;
   return newOffer(state, { kind: 'transfer', playerId, buyerId: me.id, sellerId: 0, fee: 0, status: 'accepted', note: `${fullName(p)} is willing to talk. Offer him a contract.` });
+}
+
+/* ───────────────────────── Pre-contracts ───────────────────────── */
+
+/**
+ * Countries whose clubs may sign a pre-contract with a player at another club in the same country
+ * once he is in the last six months of his deal. In England a club may only talk to a player at
+ * another English club in the last month of his contract; clubs abroad may talk to him from 1 January
+ * (FIFA's six-month rule). In the game the last month is June, which begins once the season is over.
+ */
+const DOMESTIC_PRE_CONTRACT = new Set(['ESP', 'GER', 'ITA', 'FRA', 'POR']);
+
+/** Last six months of a contract that ends this June: from 1 January (or once the season is over). */
+function lastSixMonths(state: GameState): boolean {
+  const d = dateOf(state.season, state.day);
+  return seasonOver(state) || (d.getUTCFullYear() === state.season + 1 && d.getUTCMonth() <= 5);
+}
+
+/** Last month: June, which in the game starts once the season is over. */
+function lastMonth(state: GameState): boolean {
+  const d = dateOf(state.season, state.day);
+  return seasonOver(state) || (d.getUTCFullYear() === state.season + 1 && d.getUTCMonth() === 5);
+}
+
+/** May a club in `buyerLeague` agree a pre-contract with a player whose club plays in `ownerLeague`, today? */
+export function preContractAllowed(state: GameState, ownerLeague: string, buyerLeague: string): boolean {
+  const from = leagueCountry(ownerLeague);
+  const to = leagueCountry(buyerLeague);
+  if (from !== to || DOMESTIC_PRE_CONTRACT.has(from)) return lastSixMonths(state);
+  return lastMonth(state);
+}
+
+export interface PreContractStatus {
+  /** He can sign one with the manager's club today. */
+  open: boolean;
+  /** Why not, or what the rules say, in a sentence. */
+  why: string;
+}
+
+/**
+ * Whether the manager can offer this player a pre-contract, and if not, when he can. Null when it
+ * doesn't apply (his contract doesn't end this season, he's the manager's own player, a free agent, or
+ * at a club outside the six leagues).
+ */
+export function preContractStatus(state: GameState, p: Player): PreContractStatus | null {
+  const me = userClub(state);
+  const ownerId = p.loan ? p.loan.parentId : p.clubId;
+  if (!ownerId || ownerId === me.id || isExtPlayer(p) || p.contractEnd > state.season + 1) return null;
+  const owner = club(state, ownerId);
+  if (p.preContract === me.id) return { open: false, why: `He has signed a pre-contract and joins you on 1 July.` };
+  if (p.preContract) return { open: false, why: `He has already agreed to join ${club(state, p.preContract).name} when his contract ends.` };
+  const from = leagueCountry(owner.leagueId);
+  const domestic = from === leagueCountry(me.leagueId);
+  if (preContractAllowed(state, owner.leagueId, me.leagueId)) {
+    return { open: true, why: `His contract with ${owner.name} ends in June and he hasn't agreed a new one, so he is free to agree to join you on a free transfer in the summer.` };
+  }
+  if (domestic && !DOMESTIC_PRE_CONTRACT.has(from)) {
+    return { open: false, why: `His contract ends in June. English clubs may only talk to a player at another English club in the last month of his contract: here, once the season is over.` };
+  }
+  return { open: false, why: `His contract ends in June. From 1 January, his last six months, he can agree a pre-contract with ${domestic ? `a club in ${COUNTRY_NAMES[from] ?? from}` : 'a club abroad'}, yours included.` };
+}
+
+/** Next season's squad and wage bill at the manager's club, with the players who have agreed to join. */
+function nextSeasonSquad(state: GameState, me: Club): { count: number; wages: number } {
+  let count = 0;
+  let wages = 0;
+  for (const id of me.playerIds) {
+    const p = state.players[id];
+    if (!p || p.loan || p.preContract || p.contractEnd <= state.season + 1) continue;
+    count++;
+    wages += p.wage;
+  }
+  for (const p of Object.values(state.players)) {
+    if (p.preContract !== me.id) continue;
+    count++;
+    wages += p.preTerms?.wage ?? p.wage;
+  }
+  return { count, wages };
+}
+
+/** Why a pre-contract can't be agreed on these terms, or null. */
+export function preContractBlocked(state: GameState, me: Club, wage: number): string | null {
+  const next = nextSeasonSquad(state, me);
+  if (next.count >= MAX_SQUAD) return `Next season's squad would be over ${MAX_SQUAD}: you already have ${next.count} players for it.`;
+  if (wage && next.wages + wage > me.finance.wageBudget) return `His wages would take next season's bill (${fmtWage(next.wages)}, counting the players staying and those joining) over your wage budget of ${fmtWage(me.finance.wageBudget)}.`;
+  return null;
+}
+
+/**
+ * Approach a player in the last months of his contract. His club has to be told before any talks
+ * (the rules say in writing), but has no say: it's personal terms straight away, and no fee.
+ */
+export function approachPreContract(state: GameState, playerId: number): Offer | string {
+  const p = state.players[playerId];
+  const me = userClub(state);
+  if (!p) return 'That player no longer exists.';
+  const st = preContractStatus(state, p);
+  if (!st) return 'His contract doesn\'t end this season.';
+  if (!st.open) return st.why;
+  const existing = state.offers.find((o) => o.playerId === playerId && o.buyerId === me.id && o.kind === 'precontract' && o.status === 'accepted');
+  if (existing) return existing;
+  const ownerId = p.loan ? p.loan.parentId : p.clubId!;
+  const owner = club(state, ownerId);
+  const blocked = preContractBlocked(state, me, 0);
+  if (blocked) return blocked;
+  if (!ambitionOk(state, p, me)) return `${p.lastName} isn't interested in joining a club of your stature.`;
+  return newOffer(state, {
+    kind: 'precontract', playerId, buyerId: me.id, sellerId: ownerId, fee: 0, status: 'accepted',
+    note: `${owner.name} have been told in writing that you want to talk to him, as the rules require. ${p.lastName} is willing to listen: offer him a contract that starts on 1 July.`,
+  });
+}
+
+/** The pre-contract is signed: he joins on 1 July on the terms agreed. It can't be undone. */
+function signPreContract(state: GameState, o: Offer): Offer | string {
+  const p = state.players[o.playerId];
+  const me = userClub(state);
+  const st = p ? preContractStatus(state, p) : null;
+  if (!p || !st || !st.open) {
+    o.status = 'collapsed';
+    o.note = p ? st?.why ?? `${p.lastName} has signed a new contract with his club.` : 'He is no longer available.';
+    return o;
+  }
+  const blocked = preContractBlocked(state, me, o.wage!);
+  if (blocked) return blocked;
+  const owner = club(state, o.sellerId);
+  p.preContract = me.id;
+  p.preTerms = { wage: niceWage(o.wage!), years: o.years!, clauseFee: o.clauseFee ?? null };
+  o.status = 'done';
+  o.note = `${fullName(p)} has signed a pre-contract. He joins you on a free transfer on 1 July.`;
+  addNews(state, {
+    kind: 'transfer',
+    title: `${fullName(p)} agrees to join you in the summer`,
+    body: `${fullName(p)} has signed a pre-contract with ${me.name}. He will join on a free transfer on 1 July, when his contract with ${owner.name} ends, on ${fmtWage(p.preTerms.wage)} for ${o.years} year${o.years === 1 ? '' : 's'}. ${owner.name} have been told.`,
+    link: { label: 'View player', screen: 'player', playerId: p.id },
+  });
+  return o;
 }
 
 export function withdrawOffer(state: GameState, offerId: number): void {
@@ -1116,7 +1257,8 @@ function preContracts(state: GameState, rng: Rng): void {
       continue;
     }
     if (!rng.chance(c.id === me.id ? 0.35 : 0.3)) continue;
-    const suitors = state.clubs.filter((x) => x.id !== c.id && x.id !== me.id && x.reputation >= c.reputation - 0.5 && clubLevel(state, x) <= p.ca + 8);
+    // The same rules as for the manager: in February, an English club can't sign a player from another English club.
+    const suitors = state.clubs.filter((x) => x.id !== c.id && x.id !== me.id && x.reputation >= c.reputation - 0.5 && clubLevel(state, x) <= p.ca + 8 && preContractAllowed(state, c.leagueId, x.leagueId));
     if (!suitors.length) continue;
     const to = rng.pick(suitors);
     p.preContract = to.id;
@@ -1152,8 +1294,15 @@ export function summerContracts(state: GameState, rng: Rng, userNews: string[]):
     if (p.preContract) {
       const to = club(state, p.preContract);
       if (c.id === me.id) userNews.push(`${fullName(p)} has left for ${to.name} on a free transfer.`);
+      const terms = p.preTerms;
       makeFreeAgent(state, p, false);
-      completeTransfer(state, p, to, 0, wageDemand(state, p, to), contractYears(rng, p.age));
+      completeTransfer(state, p, to, 0, terms?.wage ?? wageDemand(state, p, to), terms?.years ?? contractYears(rng, p.age));
+      if (terms) {
+        // The release clause agreed in the pre-contract.
+        p.releaseClause = terms.clauseFee;
+        if (to.id === me.id) userNews.push(`${fullName(p)} has joined from ${c.name} on a free transfer, as agreed in his pre-contract.`);
+      }
+      delete p.preTerms;
       continue;
     }
     if (c.id === me.id) {

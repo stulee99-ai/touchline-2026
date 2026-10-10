@@ -123,10 +123,17 @@ test('kick-offs: TV picks spread games from Friday to Monday, confirmed about fi
     assert.ok(f.day - f.weekend >= -1 && f.day - f.weekend <= 2, 'between Friday and Monday');
     assert.ok(!f.result || !f.tbc || f.result, 'played games were confirmed');
   }
-  // Nobody plays twice within three days.
+  // Nobody plays twice within three days, except that a domestic cup tie squeezed between a league game and a
+  // European night may have to make do with two days' rest (the scheduler's last resort, in resolveClashes).
+  const leagues = new Set(g.comps.map((c) => c.id));
   for (const c of g.clubs) {
-    const days = g.fixtures.filter((f) => f.homeId === c.id || f.awayId === c.id).map((f) => f.day).sort((a, b) => a - b);
-    for (let i = 1; i < days.length; i++) assert.ok(days[i] - days[i - 1] >= 3, `${c.name} plays on days ${days[i - 1]} and ${days[i]}`);
+    const fx = g.fixtures.filter((f) => f.homeId === c.id || f.awayId === c.id).sort((a, b) => a.day - b.day);
+    for (let i = 1; i < fx.length; i++) {
+      const gap = fx[i].day - fx[i - 1].day;
+      if (gap >= 3) continue;
+      const cupTie = !leagues.has(fx[i].comp) || !leagues.has(fx[i - 1].comp);
+      assert.ok(gap >= 2 && cupTie, `${c.name} plays on days ${fx[i - 1].day} and ${fx[i].day} (${fx[i - 1].comp}, ${fx[i].comp})`);
+    }
   }
 });
 

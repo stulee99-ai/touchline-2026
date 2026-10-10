@@ -8,6 +8,7 @@ import {
   acceptCounter, acceptLoanCounter, counterAccepted, approachFreeAgent, confirmSigning, reopenTerms, windowOpen, askingPrice, exerciseOption, makeBid, makeLoanBid, MAX_SQUAD,
   offerRenewal, preferredYears, proposeTerms, releaseToFree, respondToBid, setListed, severanceCost, valueOf, wageDemand,
   windowInfo, withdrawOffer, summerWindow, januaryWindow, recallLoan, clauseChoices, clauseNorm, defaultClause, confirmLoan,
+  approachPreContract, preContractAllowed, preContractStatus,
 } from '../engine/transfers.js';
 import type { Club, GameState, Ledger, Offer, Player, Pos } from '../engine/types.js';
 import type { Action, Ctx, Screen } from './ctx.js';
@@ -60,7 +61,11 @@ function windowLine(g: GameState): string {
 
 /** Wage and contract lines used on several screens. */
 function contractCell(g: GameState, p: Player): string {
-  return `Jun ${p.contractEnd}${p.contractEnd <= g.season + 1 ? ' <span class="chip">ends</span>' : ''}`;
+  const ends = p.contractEnd <= g.season + 1;
+  if (!ends) return `Jun ${p.contractEnd}`;
+  if (p.preContract) return `Jun ${p.contractEnd} <span class="chip bad" title="Agreed to join ${esc(club(g, p.preContract).name)}">agreed</span>`;
+  const talk = p.clubId !== g.userClubId && preContractStatus(g, p)?.open;
+  return `Jun ${p.contractEnd} ${talk ? '<span class="chip ok" title="Free to agree a pre-contract with you">pre-contract</span>' : '<span class="chip">ends</span>'}`;
 }
 
 /* ───────────────────────── Transfers screen ───────────────────────── */
@@ -119,6 +124,7 @@ function searchTab(ctx: Ctx): string {
     <label>League ${opt('league', tf.league, [['all', 'Any'], ...g.comps.map((c) => [c.id, c.name] as [string, string]), ['free', 'Free agents']])}</label>
     <label>Max value ${opt('maxValue', tf.maxValue, [[0, 'Any'], [250e3, '£250k'], [500e3, '£500k'], [1e6, '£1m'], [2e6, '£2m'], [3e6, '£3m'], [5e6, '£5m'], [7.5e6, '£7.5m'], [10e6, '£10m'], [15e6, '£15m'], [20e6, '£20m'], [30e6, '£30m'], [40e6, '£40m'], [60e6, '£60m'], [80e6, '£80m'], [100e6, '£100m'], [150e6, '£150m']])}</label>
     <label>Max age <input class="cm age-in" type="number" inputmode="numeric" min="15" max="45" step="1" value="${tf.maxAge || ''}" placeholder="Any" autocomplete="off" data-change="tf" data-key="maxAge" aria-label="Maximum age"></label>
+    <label>Contract ${opt('contract', tf.contract ?? 'any', [['any', 'Any'], ['ending', `Ends June ${g.season + 1}`], ['talk', 'Free to talk (pre-contract)']])}</label>
   </div>`;
   // Up to five attributes, each with a minimum. Judged on what you know: the middle of each scouting range.
   const attrs = (tf.attrs ?? []).filter(([k]) => k in ATTR_LABEL).slice(0, 5) as [AttrKey, number][];
@@ -130,6 +136,16 @@ function searchTab(ctx: Ctx): string {
     ${attrs.length ? '<span class="small-note tf-attrs-note">Judged on what you know: the middle of each range your scouts give. Ranges (12–16) are estimates; scout a player to be sure.</span>' : ''}</div>`;
   const name = tf.name.trim().toLowerCase();
   const known = (p: Player, k: AttrKey) => { const [lo, hi] = attrRange(g, p, k); return (lo + hi) / 2; };
+  // Pre-contracts: whether the rules let the manager talk to players from each league today (worked out once per league).
+  const myLeague = userClub(g).leagueId;
+  const talkFrom = new Map<string, boolean>();
+  const canTalk = (p: Player): boolean => {
+    const ownerId = p.loan ? p.loan.parentId : p.clubId;
+    if (!ownerId || p.preContract || p.contractEnd > g.season + 1) return false;
+    const lg = club(g, ownerId).leagueId;
+    if (!talkFrom.has(lg)) talkFrom.set(lg, preContractAllowed(g, lg, myLeague));
+    return talkFrom.get(lg)!;
+  };
   let list = Object.values(g.players).filter((p) => {
     if (p.clubId === g.userClubId || isExtPlayer(p)) return false;
     if (tf.pos.startsWith('p:')) {
@@ -139,6 +155,8 @@ function searchTab(ctx: Ctx): string {
     } else if (tf.pos !== 'all' && !GROUP[tf.pos]?.includes(primaryPos(p))) return false;
     if (tf.league === 'free' ? p.clubId !== null : tf.league !== 'all' && (!p.clubId || club(g, p.clubId).leagueId !== tf.league)) return false;
     if (tf.maxAge && p.age > tf.maxAge) return false;
+    if (tf.contract === 'ending' && (!p.clubId || p.contractEnd > g.season + 1)) return false;
+    if (tf.contract === 'talk' && !canTalk(p)) return false;
     if (name && !fullName(p).toLowerCase().includes(name)) return false;
     for (const [k, min] of attrs) if (known(p, k) < min) return false;
     return true;
@@ -204,7 +222,7 @@ function freeTab(ctx: Ctx): string {
 function offerLine(g: GameState, o: Offer): string {
   const p = g.players[o.playerId];
   const name = p ? playerLink(p) : 'A player';
-  const what = o.kind === 'loan' ? `loan${o.wageShare !== undefined ? ` (${Math.round(o.wageShare * 100)}% of wages)` : ''}` : o.fee ? fmtMoney(o.fee) : 'free transfer';
+  const what = o.kind === 'loan' ? `loan${o.wageShare !== undefined ? ` (${Math.round(o.wageShare * 100)}% of wages)` : ''}` : o.kind === 'precontract' ? 'pre-contract (free, joins 1 July)' : o.fee ? fmtMoney(o.fee) : 'free transfer';
   return `${name} · ${what}`;
 }
 
@@ -228,13 +246,15 @@ function offersTab(ctx: Ctx): string {
       <div class="row-btns"><button class="btn primary small" data-act="bid-accept" data-id="${o.id}">Accept</button>${canRecall ? `<button class="btn small" data-act="bid-accept-recall" data-id="${o.id}" title="Ask for the right to call him back in the January window">Accept with January recall</button>` : ''}${clause ? '' : `<button class="btn small" data-act="bid-reject" data-id="${o.id}">Reject</button>`}${counter}</div></div>`;
   }).join('');
   const mine = g.offers.filter((o) => o.buyerId === me && ['accepted', 'countered', 'terms'].includes(o.status));
-  const outRows = mine.map((o) => `<tr><td>${offerLine(g, o)}</td><td class="hide-xs">${o.sellerId ? clubLink(g, o.sellerId) : '<i>Free agent</i>'}</td><td>${o.status === 'accepted' ? (o.kind === 'loan' ? 'Loan agreed: confirm it' : o.agreed ? 'Terms agreed: confirm it' : o.sellerId ? STATUS_WORD.accepted : 'Talks: personal terms') : STATUS_WORD[o.status]}</td><td class="r">${g.players[o.playerId] ? `<button class="btn small" data-act="player" data-id="${o.playerId}">Open</button>` : ''} <button class="btn small ghost" data-act="offer-withdraw" data-id="${o.id}">Withdraw</button></td></tr>`).join('');
+  const outRows = mine.map((o) => `<tr><td>${offerLine(g, o)}</td><td class="hide-xs">${o.sellerId ? clubLink(g, o.sellerId) : '<i>Free agent</i>'}</td><td>${o.status === 'accepted' ? (o.kind === 'loan' ? 'Loan agreed: confirm it' : o.agreed ? 'Terms agreed: confirm it' : o.kind === 'precontract' ? 'Pre-contract talks' : o.sellerId ? STATUS_WORD.accepted : 'Talks: personal terms') : STATUS_WORD[o.status]}</td><td class="r">${g.players[o.playerId] ? `<button class="btn small" data-act="player" data-id="${o.playerId}">Open</button>` : ''} <button class="btn small ghost" data-act="offer-withdraw" data-id="${o.id}">Withdraw</button></td></tr>`).join('');
   const recent = g.offers.filter((o) => (o.buyerId === me || o.sellerId === me) && !['pending', 'accepted', 'countered', 'terms'].includes(o.status)).slice(-12).reverse();
+  const joining = Object.values(g.players).filter((p) => p.preContract === me);
   const recentRows = recent.map((o) => `<tr><td>${dateOf(o.season === g.season ? g.season : o.season, o.day)}</td><td>${offerLine(g, o)}</td><td class="hide-xs">${o.buyerId === me ? 'Your bid' : `From ${clubLink(g, o.buyerId)}`}</td><td>${STATUS_WORD[o.status]}</td><td class="hide-sm small-note">${esc(o.note ?? '')}</td></tr>`).join('');
   return `<div class="sub-head">Offers for your players</div>
     ${inRows || '<p class="pad small-note">No offers waiting. List players for transfer or loan to attract bids.</p>'}
     <div class="sub-head">Your deals in progress</div>
     ${outRows ? `<div class="scroll"><table class="grid compact"><tbody>${outRows}</tbody></table></div>` : '<p class="pad small-note">None. Find a player and make an offer from his profile.</p>'}
+    ${joining.length ? `<div class="sub-head">Joining you in the summer</div><div class="scroll"><table class="grid compact"><tbody>${joining.map((p) => `<tr><td>${playerLink(p)}</td><td class="hide-xs">${p.clubId ? clubLink(g, p.loan ? p.loan.parentId : p.clubId) : ''}</td><td>Pre-contract${p.preTerms ? `: ${fmtWage(p.preTerms.wage)}, ${p.preTerms.years} year${p.preTerms.years === 1 ? '' : 's'}` : ''}</td><td class="r small-note">Joins 1 July</td></tr>`).join('')}</tbody></table></div>` : ''}
     ${recentRows ? `<div class="sub-head">Recent</div><div class="scroll"><table class="grid compact"><tbody>${recentRows}</tbody></table></div>` : ''}`;
 }
 
@@ -292,7 +312,7 @@ export function dealPanel(ctx: Ctx, p: Player): string {
       <div><dt>Contract</dt><dd>${p.clubId ? `to June ${p.contractEnd} (${yearsLeft(p, g.season, g.day).toFixed(1)} yrs)` : 'Free agent'}</dd></div>
       ${p.releaseClause ? `<div><dt>Release clause</dt><dd>${fmtMoney(p.releaseClause)}</dd></div>` : ''}
       ${loanFrom ? `<div><dt>On loan from</dt><dd>${clubLink(g, loanFrom.id)} · you pay ${Math.round(p.loan!.wageShare * 100)}% of wages${p.loan!.optionFee ? ` · option ${fmtMoney(p.loan!.optionFee)}` : ''}${p.loan!.recall ? ' · they can recall him in January' : ''}</dd></div>` : ''}
-      ${p.preContract ? `<div><dt>Next club</dt><dd>${clubLink(g, p.preContract)} (pre-contract)</dd></div>` : ''}
+      ${p.preContract ? `<div><dt>Next club</dt><dd>${clubLink(g, p.preContract)} (pre-contract${p.preContract === me.id && p.preTerms ? `: ${fmtWage(p.preTerms.wage)} for ${p.preTerms.years} year${p.preTerms.years === 1 ? '' : 's'} from 1 July` : ''})</dd></div>` : ''}
       ${p.listed ? `<div><dt>Status</dt><dd>${p.listed === 'transfer' ? 'Listed for transfer' : 'Available for loan'}</dd></div>` : ''}
     </dl>`;
   const msg = ctx.ui.dealMsg ? `<p class="deal-msg" role="status">${esc(ctx.ui.dealMsg)}</p>` : '';
@@ -325,7 +345,9 @@ function ownActions(ctx: Ctx, p: Player): string {
   const me = userClub(g);
   if (p.loan) {
     const opt = p.loan.optionFee ? `<button class="btn" data-act="exercise-option" data-id="${p.id}">Sign permanently for ${fmtMoney(p.loan.optionFee)}</button>` : '';
-    return `<div class="row-btns">${opt}<button class="btn ghost" data-act="confirm" data-key="release-${p.id}">End loan early…</button></div>${ctx.ui.confirm === `release-${p.id}` ? `<div class="confirm">Send ${esc(fullName(p))} back to ${esc(club(g, p.loan.parentId).name)}? <button class="btn danger" data-act="release" data-id="${p.id}">Send back</button> <button class="btn" data-act="confirm-cancel">Keep him</button></div>` : ''}`;
+    const talks = preContractTalks(ctx, p);
+    if (talks) return talks;
+    return `${preContractBox(ctx, p)}<div class="row-btns">${opt}<button class="btn ghost" data-act="confirm" data-key="release-${p.id}">End loan early…</button></div>${ctx.ui.confirm === `release-${p.id}` ? `<div class="confirm">Send ${esc(fullName(p))} back to ${esc(club(g, p.loan.parentId).name)}? <button class="btn danger" data-act="release" data-id="${p.id}">Send back</button> <button class="btn" data-act="confirm-cancel">Keep him</button></div>` : ''}`;
   }
   const draft = ctx.ui.renewDraft?.id === p.id ? ctx.ui.renewDraft : null;
   const clauseHtml = clauseSelect(g, p, me, true, 0, draft?.clause ?? 'keep');
@@ -352,11 +374,46 @@ function ownActions(ctx: Ctx, p: Player): string {
     </div>${clauseWarn}${renew}${release}`;
 }
 
+/** The pre-contract offer, or when it opens, for a player whose contract ends this season. */
+function preContractBox(ctx: Ctx, p: Player): string {
+  const st = preContractStatus(ctx.game, p);
+  // Already signed with the manager: the facts above say so.
+  if (!st || p.preContract === userClub(ctx.game).id) return '';
+  if (!st.open) return `<p class="small-note pc-note">${esc(st.why)}</p>`;
+  return `<div class="pc-box"><b>Free to talk</b><p class="small-note">${esc(st.why)} His club has to be told, but gets no fee and no say.</p>
+    <div class="row-btns"><button class="btn primary" data-act="precontract" data-id="${p.id}">Offer a pre-contract…</button></div></div>`;
+}
+
+/** Pre-contract talks in progress: personal terms, then the signature. */
+function preContractTalks(ctx: Ctx, p: Player): string {
+  const g = ctx.game;
+  const me = userClub(g);
+  const o = latestOffer(g, p);
+  if (!o || o.kind !== 'precontract' || o.status !== 'accepted') return '';
+  const owner = club(g, o.sellerId);
+  if (o.agreed && o.wage !== undefined) {
+    return `<div class="deal-form agreed"><b>Pre-contract agreed</b><p class="small-note">${esc(o.note ?? '')}</p>
+      <dl class="facts" style="margin:6px 0;width:100%"><div><dt>Wage</dt><dd>${fmtWage(o.wage)}</dd></div><div><dt>Contract</dt><dd>${o.years} year${o.years === 1 ? '' : 's'} from 1 July</dd></div><div><dt>Release clause</dt><dd>${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}</dd></div><div><dt>Fee</dt><dd>None: his contract with ${esc(owner.name)} runs out</dd></div></dl>
+      <div class="row-btns"><button class="btn primary" data-act="deal-sign" data-id="${o.id}">Sign the pre-contract</button><button class="btn" data-act="terms-reopen" data-id="${o.id}">Change the terms</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button></div>
+      <p class="small-note">Once signed it's binding: he joins you on 1 July and can't be sold or renewed by ${esc(owner.name)} in the meantime. Until you confirm, he could still agree a new deal or another move.</p></div>`;
+  }
+  const demand = o.demand?.wage ?? niceWage(wageDemand(g, p, me) * 1.1);
+  const start = o.demand ? demand : niceWage(Math.max(p.wage, demand * 0.85));
+  return `<div class="deal-form"><b>Pre-contract: personal terms</b>${o.note ? `<p class="small-note">${esc(o.note)}</p>` : ''}
+    <label>Wage £<input class="cm money-in" id="deal-wage" type="number" min="0" step="1" value="${Math.round(start / 1000)}">k a week</label>
+    ${yearsSelect('deal-years', o.demand?.years ?? preferredYears(p))}
+    ${clauseSelect(g, p, me, false, 0, o.clause ?? defaultClause(me))}
+    <button class="btn primary" data-act="terms-offer" data-id="${o.id}">Offer contract</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button>
+    <p class="small-note">He earns ${fmtWage(p.wage)} now. There's no fee, so he'll want a little more in wages. His wages count against next season's budget (${fmtWage(me.finance.wageBudget)}), alongside the players staying and anyone else joining. ${clauseNote(me)}</p></div>`;
+}
+
 function buyActions(ctx: Ctx, p: Player): string {
   const g = ctx.game;
   const me = userClub(g);
   const o = latestOffer(g, p);
   const free = p.clubId === null;
+  const talks = preContractTalks(ctx, p);
+  if (talks) return talks;
   // Talks in progress take over the panel.
   if (o && o.kind === 'loan' && o.status === 'accepted' && o.agreed) {
     const share = o.wageShare ?? 1;
@@ -402,7 +459,7 @@ function buyActions(ctx: Ctx, p: Player): string {
           : '<p class="small-note">You have a recall clause: you can bring him back in the January window.</p>'
         : `<p class="small-note">${esc(club(g, p.loan.parentId).name)} can recall him in the January window.</p>`
       : '';
-    return `<p class="small-note">He's on loan at ${clubLink(g, p.clubId!)} from ${clubLink(g, p.loan.parentId)} until the end of the season.</p>${recall}`;
+    return `<p class="small-note">He's on loan at ${clubLink(g, p.clubId!)} from ${clubLink(g, p.loan.parentId)} until the end of the season.</p>${recall}${preContractBox(ctx, p)}`;
   }
   const ask = askingPrice(g, p, me);
   const value = valueOf(g, p);
@@ -419,7 +476,9 @@ function buyActions(ctx: Ctx, p: Player): string {
         <button class="btn primary" data-act="loan-submit" data-id="${p.id}">Make offer</button><button class="btn ghost" data-act="deal-close">Cancel</button></div>`
     : '';
   void ask;
-  return `<div class="row-btns"><button class="btn primary" data-act="deal-open" data-d="bid">Make an offer…</button><button class="btn" data-act="deal-open" data-d="loan">Ask about a loan…</button></div>${bidForm}${loanForm}`;
+  const pc = preContractBox(ctx, p);
+  const pcOpen = preContractStatus(g, p)?.open;
+  return `${pc}<div class="row-btns"><button class="btn${pcOpen ? '' : ' primary'}" data-act="deal-open" data-d="bid">Make an offer…</button><button class="btn" data-act="deal-open" data-d="loan">Ask about a loan…</button></div>${bidForm}${loanForm}`;
 }
 
 /* ───────────────────────── Squad contracts view ───────────────────────── */
@@ -626,12 +685,24 @@ export const marketActions: Record<string, Action> = {
     reply(ctx, proposeTerms(ctx.game, Number(el.dataset.id), wage, years, clause));
   },
   approach: (ctx, el) => reply(ctx, approachFreeAgent(ctx.game, Number(el.dataset.id))),
+  precontract: (ctx, el) => reply(ctx, approachPreContract(ctx.game, Number(el.dataset.id))),
   'deal-sign': confirmed((ctx, el) => {
     const g = ctx.game;
     const o = g.offers.find((x) => x.id === Number(el.dataset.id));
     if (!o?.agreed || o.wage === undefined) return null;
     const me = userClub(g);
     const bill = wageBill(g, me.id);
+    if (o.kind === 'precontract') {
+      return {
+        title: 'Sign the pre-contract?',
+        lines: [
+          `${nameOf(g, o.playerId)} joins you on a free transfer on 1 July, when his contract with ${club(g, o.sellerId).name} ends.`,
+          `${fmtWage(o.wage)} for ${o.years} year${o.years === 1 ? '' : 's'}, release clause: ${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}.`,
+          'A pre-contract is binding: neither side can back out.',
+        ],
+        ok: 'Yes, sign it',
+      };
+    }
     return {
       title: 'Confirm signing',
       lines: [
@@ -746,6 +817,7 @@ export const marketActions: Record<string, Action> = {
     if (screen === 'transfers' && el.dataset.t) extra.transferTab = el.dataset.t;
     if (screen === 'squad' && el.dataset.t) extra.squadView = el.dataset.t;
     if (screen === 'scouting' && el.dataset.t) extra.scoutTab = el.dataset.t;
+    if (screen === 'club' && el.dataset.t) extra.clubTab = el.dataset.t;
     ctx.go(screen, extra);
   },
   'squad-view': (ctx, el) => { ctx.ui.squadView = el.dataset.v as 'overview'; ctx.render(); },

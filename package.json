@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p .",
-    "test": "tsx --test tests/engine.test.ts tests/pyramid.test.ts tests/fixes.test.ts tests/round2.test.ts",
+    "test": "tsx --test tests/engine.test.ts tests/pyramid.test.ts tests/fixes.test.ts tests/round2.test.ts tests/round2b.test.ts",
     "balance": "tsx tools/balance.ts 20",
     "tactics-lab": "tsx tools/tactics-lab.ts",
     "test:quick": "tsx --test tests/fixes.test.ts"

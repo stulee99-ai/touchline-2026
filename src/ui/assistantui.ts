@@ -1,4 +1,5 @@
-import { assistantName, debrief, type HalfTimeReport, type Suggestion, type Tone } from '../engine/analysis.js';
+import { debrief, type HalfTimeReport, type Suggestion, type Tone } from '../engine/analysis.js';
+import { assistantOf, ratingWord } from '../engine/staff.js';
 import { club } from '../engine/game.js';
 import type { Club, GameState, NewsItem } from '../engine/types.js';
 import { storyHtml } from './article.js';
@@ -10,6 +11,7 @@ import { linkify } from './linkify.js';
  * debrief message in the inbox after the final whistle.
  */
 
+const cap = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
 const initials = (name: string): string => name.split(/\s+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 
 function head(name: string, sub: string, label: string, tone: Tone, title?: string): string {
@@ -25,8 +27,9 @@ const TAG: Record<Suggestion['kind'], [string, string]> = {
 
 /** The half-time card: verdict, what he has seen, and his changes with one-tap buttons. */
 export function htCardHtml(g: GameState, me: Club, rep: HalfTimeReport, applied: Set<number>): string {
-  const name = assistantName(g, me);
-  const obs = rep.observations.map((o) => `<li class="${o.tone}">${esc(o.text)}<small>${esc(o.evidence)}</small></li>`).join('');
+  const a = me.assistant ?? assistantOf(g);
+  const name = a.name;
+  const obs = rep.observations.map((o) => `<li class="${o.tone}">${esc(o.text)}${o.evidence ? `<small>${esc(o.evidence)}</small>` : ''}</li>`).join('');
   const rows = rep.suggestions.map((s, i) => {
     const done = applied.has(i);
     const [tag, cls] = TAG[s.kind];
@@ -35,10 +38,10 @@ export function htCardHtml(g: GameState, me: Club, rep: HalfTimeReport, applied:
   const left = rep.suggestions.filter((_, i) => !applied.has(i)).length;
   const what = rep.suggestions.length
     ? `<div class="asst-sec">What I'd do</div>${rows}`
-    : `<div class="asst-sec">What I'd do</div><p class="asst-keep">Nothing. ${esc(rep.keep.replace(/^Or leave it: /, '').replace(/^Or leave it as it is\.$/, 'Leave it as it is.'))}</p>`;
+    : `<div class="asst-sec">What I'd do</div><p class="asst-keep">Nothing. ${esc(cap(rep.keep.replace(/^Or leave it: /, '').replace(/^Or leave it as it is\.$/, 'Leave it as it is.')))}</p>`;
   const foot = `<div class="asst-foot">${left > 1 ? `<button class="btn small" data-act="ht-apply-all">${left === rep.suggestions.length ? (left === 2 ? 'Apply both' : `Apply all ${left}`) : `Apply the other ${left === 2 ? 'two' : left}`}</button>` : ''}<button class="btn small ghost" data-act="ht-dismiss">${applied.size ? 'Close' : 'Thanks, leave it'}</button></div>`;
   return `<section class="asst-card ht" aria-label="Half-time notes">
-    ${head(name, 'Assistant manager · half-time notes', rep.label, rep.tone)}
+    ${head(name, `${a.caretaker ? 'Caretaker assistant' : 'Assistant manager'} · reads the game: ${ratingWord(a.read).toLowerCase()} · half-time notes`, rep.label, rep.tone)}
     <p class="asst-verdict">"${esc(rep.verdict)}"</p>
     <ol class="asst-list">${obs}</ol>
     <p class="asst-shape"><b>They're playing</b> ${esc(rep.shape)}</p>
@@ -77,7 +80,9 @@ export function debriefHtml(g: GameState, n: NewsItem): string {
   const me = club(g, g.userClubId);
   const side = f.homeId === g.userClubId ? 0 : 1;
   const opp = club(g, side === 0 ? f.awayId : f.homeId);
-  const name = assistantName(g, me);
+  // The assistant who saw the match (named on the message), and how well he reads a game.
+  const name = n.tag?.match(/^From (.+?), /)?.[1] ?? assistantOf(g).name;
+  const role = n.tag?.includes('caretaker') ? 'caretaker assistant' : 'assistant manager';
   const ourCol = barColour(me, '#4f7be0');
   let theirCol = barColour(opp, '#f0a500');
   if (near(ourCol, theirCol)) theirCol = near(ourCol, '#f0a500') ? '#d9e4fb' : '#f0a500';
@@ -86,7 +91,7 @@ export function debriefHtml(g: GameState, n: NewsItem): string {
     ? `<div class="asst-sec">Changes during the match</div><ul class="asst-changes">${d.changes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>${d.turning ? `<p class="asst-keep">${esc(d.turning)}</p>` : ''}`
     : '';
   return `<section class="asst-card debrief">
-    ${head(name, `${name}, assistant manager`, d.label, d.tone, n.title.replace(/^Debrief: /, ''))}
+    ${head(name, `${name}, ${role} · reads the game: ${ratingWord(d.read).toLowerCase()}`, d.label, d.tone, n.title.replace(/^Debrief: /, ''))}
     <ol class="asst-list">${d.points.map((p) => `<li>${linkify(g, p)}</li>`).join('')}</ol>
     <div class="asst-two">
       <div class="asst-box good"><h5>What worked</h5><ul>${d.positives.map((p) => `<li>${linkify(g, p)}</li>`).join('')}</ul></div>
@@ -98,6 +103,7 @@ export function debriefHtml(g: GameState, n: NewsItem): string {
     <div class="asst-sec">Player notes</div>
     <div class="scroll"><table class="asst-tbl"><thead><tr><th>Player</th><th>Rat</th><th>Key passes</th><th>Shots</th><th>Tackles</th></tr></thead><tbody>${players}</tbody></table></div>
     ${d.nextLabel !== 'Next' ? `<div class="asst-sec">Looking ahead</div><p class="asst-ahead"><b>${linkify(g, d.nextLabel)}</b>${d.next.length ? ` ${linkify(g, d.next.join(' '))}` : ''}</p>` : ''}
+    ${d.read < 10 ? '<p class="small-note asst-weak">A better reader of the game would tell you more. Your staff are in Club Info, under Staff.</p>' : ''}
     <div class="asst-foot"><button class="btn small" data-act="report" data-id="${f.id}">Match report ►</button></div>
   </section>`;
 }

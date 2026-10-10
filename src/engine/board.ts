@@ -158,6 +158,8 @@ export function takeNewJob(state: GameState, clubId: number): boolean {
   const oldClub = club(state, old);
   oldClub.lineup = null;
   oldClub.bench = null;
+  // His assistant stays behind; the new club has its own.
+  delete oldClub.assistant;
   takeCharge(state, clubId, state.managerName);
   state.board = { confidence: 55, warnings: 0, lastWarnDay: -999, sacked: null };
   return true;

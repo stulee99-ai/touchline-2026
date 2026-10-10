@@ -40,7 +40,7 @@ export interface UiState {
   benchSlot?: number | null;
   /** Club screen: which club (defaults to the manager's own) and which tab. */
   clubId?: number;
-  clubTab?: 'info' | 'squad' | 'fixtures' | 'transfers' | 'stadium';
+  clubTab?: 'info' | 'squad' | 'fixtures' | 'transfers' | 'stadium' | 'staff';
   clubSeason?: number;
   statsTab?: 'goals' | 'assists' | 'rating' | 'clean';
   squadFilter?: 'all' | 'gk' | 'def' | 'mid' | 'att' | 'avail';
@@ -53,6 +53,8 @@ export interface UiState {
   transferTab?: 'search' | 'listed' | 'free' | 'offers' | 'news';
   listedKind?: 'all' | 'transfer' | 'loan';
   tf?: { pos: string; league: string; maxValue: number; maxAge: number; sort: 'value' | 'ca' | 'age' | 'wage' | 'contract'; name: string; natural?: boolean;
+    /** Contract filter: any, ending this season, or free to agree a pre-contract with the manager now. */
+    contract?: 'any' | 'ending' | 'talk';
     /** Up to five attribute minimums, judged on what the manager knows (the middle of each scouting range). */
     attrs?: [string, number][] };
   /** Find Players: page shown (0-based). */

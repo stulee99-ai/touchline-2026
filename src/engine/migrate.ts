@@ -1,4 +1,6 @@
 import { roundOut } from './attributes.js';
+import { assistantName } from './analysis.js';
+import { initAssistant } from './staff.js';
 import { initClubFinance, initContract } from './finance.js';
 import { KICKOFFS } from './fixtures.js';
 import { SAVE_VERSION } from './generate.js';
@@ -16,6 +18,7 @@ import type { GameState } from './types.js';
  * v5 → v6: scouting. v6 → v7: cups and European competitions (from the next season).
  * v7 → v8: internationals (the rest of this season's calendar).
  * v8 → v9: bans and yellow cards per competition. v11 → v12: training. v12 → v13: the lower leagues (built at the next season rollover).
+ * v14 → v15: minutes played, rounded regens. v15 → v16: the assistant manager's ratings.
  */
 export function migrateSave(raw: unknown): GameState | null {
   const g = raw as GameState & { version: number };
@@ -117,6 +120,12 @@ export function migrateSave(raw: unknown): GameState | null {
       roundOut(rr, p);
     }
     g.version = 15;
+  }
+  if (g.version === 15) {
+    // Assistant managers with ratings: the manager's assistant keeps the name he has always had.
+    const me = g.clubs[g.userClubId - 1];
+    if (me && !me.assistant) initAssistant(g, new Rng((g.rngState ?? 1) ^ 0xa551), assistantName(g, me));
+    g.version = 16;
   }
   return g.version === SAVE_VERSION ? g : null;
 }

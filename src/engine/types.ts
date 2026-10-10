@@ -144,6 +144,8 @@ export interface Player {
   loan: Loan | null;
   /** Has agreed to join another club when his contract runs out. */
   preContract: number | null;
+  /** The terms of a pre-contract with the manager's club: what he signs for on 1 July. */
+  preTerms?: { wage: number; years: number; clauseFee: number | null };
   /** Season he joined his current club. */
   joined: number;
   /** Day he became a free agent (only for players without a club). */
@@ -285,7 +287,34 @@ export interface Scouting {
   nextId: number;
 }
 
-export type OfferKind = 'transfer' | 'loan';
+export type OfferKind = 'transfer' | 'loan' | 'precontract';
+
+/**
+ * The manager's assistant. Two ratings, 1–20: reading the game (the half-time card, the debrief and
+ * his changes when the manager skips to full time) and judging players (picking the XI and bench, and
+ * who he brings on). A caretaker (the youth coach) stands in while the job is vacant.
+ */
+export interface Assistant {
+  id: number;
+  name: string;
+  nation: string;
+  age: number;
+  read: number;
+  judge: number;
+  /** Weekly wage. */
+  wage: number;
+  /** Season he joined (or became available). */
+  joined: number;
+  caretaker?: boolean;
+}
+
+/** Candidates for the assistant's job, and when the list was last drawn up. */
+export interface StaffMarket {
+  pool: Assistant[];
+  season: number;
+  day: number;
+  nextId: number;
+}
 
 /**
  * A bid for a player. `status` walks through: pending (with the selling club) →
@@ -498,6 +527,8 @@ export interface Club {
   leagueId: string;
   playerIds: number[];
   tactics: Tactics;
+  /** The manager's club only: his assistant. */
+  assistant?: Assistant;
   /** Chosen starting XI in formation-slot order. null = let the assistant pick. */
   lineup: number[] | null;
   /** Chosen substitutes (up to 9). null = let the assistant pick. */
@@ -595,6 +626,8 @@ export interface MatchAnalysis {
   players: Record<number, { kp: number; sh: number; tk: number }>;
   /** Team instructions the managers changed during the match. */
   changes: { minute: number; side: 0 | 1; key: string; value: string }[];
+  /** How well the manager's assistant reads a game (1–20), for the debrief. Absent: 20. */
+  read?: number;
 }
 
 export interface MatchSummary {
@@ -762,6 +795,8 @@ export interface GameState {
   nextPlayerId: number;
   offers: Offer[];
   scouting: Scouting;
+  /** Assistant managers looking for a job (absent in older saves). */
+  staffMarket?: StaffMarket;
   cups: Cup[];
   nextTieId: number;
   /** Clubs from outside the six leagues taking part in this season's cups. */

@@ -7,6 +7,7 @@ import { boardSummary, ensureBoard, takeNewJob } from '../engine/board.js';
 import { compareButtons } from './compare.js';
 import { savePanel } from './saveio.js';
 import { fullScreenPanel } from './fullscreen.js';
+import { staffTab } from './staffui.js';
 import { ARROW_BALL, ARROW_OFF, runControls } from './runs.js';
 import { surgeryPanel, treatedNote } from './injuryui.js';
 import { canTreat } from '../engine/surgery.js';
@@ -967,13 +968,15 @@ export function clubScreen(ctx: Ctx): string {
   const c = ctx.ui.clubId ? club(g, ctx.ui.clubId) : userClub(g);
   const mine = c.id === g.userClubId;
   const tab = ctx.ui.clubTab ?? (mine ? 'info' : 'squad');
-  const tabs = segs([['info', 'Information'], ['squad', 'Squad'], ['fixtures', 'Fixtures'], ...(c.external ? [] : [['transfers', 'Transfers']] as [string, string][]), ...(mine ? [['stadium', 'Stadium']] as [string, string][] : [])], tab, 'club-tab', 't');
+  const tabs = segs([['info', 'Information'], ['squad', 'Squad'], ['fixtures', 'Fixtures'], ...(c.external ? [] : [['transfers', 'Transfers']] as [string, string][]), ...(mine ? [['staff', 'Staff'], ['stadium', 'Stadium']] as [string, string][] : [])], tab, 'club-tab', 't');
   const players = c.playerIds.map((id) => g.players[id]);
   const best = [...players].sort((a, b) => b.ca - a.ca)[0];
   const back = mine ? '' : '<button class="btn small" data-act="back">◄ Back</button>';
   let body: string;
   if (tab === 'stadium' && mine) {
     body = stadiumTab(ctx);
+  } else if (tab === 'staff' && mine) {
+    body = staffTab(ctx);
   } else if (tab === 'transfers' && !c.external) {
     body = clubTransfers(ctx, c);
   } else if (tab === 'squad') {

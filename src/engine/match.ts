@@ -1,4 +1,4 @@
-import { familiarityFactor, POS_ROLE, type Role } from './attributes.js';
+import { familiarityFactor, hashString, POS_ROLE, type Role } from './attributes.js';
 import {
   buildLine, celebrateLine, type ChanceType, fillerLine, goalLine, milestoneLine, missedLine, offsideLine, savedLine,
   woodworkLine,
@@ -7,7 +7,7 @@ import { INJURIES, injuryWeights } from './data.js';
 import { drillFactor, famFactor, type Prep, sharpFatigue, sharpInjury, sharpOf, sharpStrength } from './prep.js';
 import { clamp, Rng } from './rng.js';
 import { traitsOf, type TraitId } from './traits.js';
-import { getFormation, MAX_SUB_WINDOWS, MAX_SUBS, slotRating } from './tactics.js';
+import { getFormation, MAX_SUB_WINDOWS, MAX_SUBS, misjudge, slotRating } from './tactics.js';
 import type {
   AttrKey, Club, CommentaryLine, Injury, MatchAnalysis, MatchEvent, MatchSummary, Mentality, Player, Pos, RunFlags, SideNumbers, Tactics,
 } from './types.js';
@@ -53,7 +53,12 @@ export interface TeamSetup {
   prep?: Prep;
   /** Run arrows by player id (the manager's side only). */
   runs?: Record<number, RunFlags>;
+  /** The manager's assistant (his side only): his suggestions and, when he takes over, his changes. */
+  assistant?: AssistantView;
 }
+
+/** What the match needs to know about an assistant. */
+export interface AssistantView { id: number; read: number; judge: number }
 
 /** Cup ties: extra time and penalties, and the first leg's score for a second leg (this match's home side first). */
 export interface KnockoutRules {
@@ -135,6 +140,7 @@ export interface ChangeMark {
 
 interface Side {
   prep?: Prep;
+  asst?: AssistantView;
   runs: Record<number, RunFlags>;
   club: Club;
   idx: 0 | 1;
@@ -248,6 +254,8 @@ export class MatchSim {
    */
   private an: { nums: [SideNumbers, SideNumbers]; half: [SideNumbers, SideNumbers] | null; players: MatchAnalysis['players']; changes: MatchAnalysis['changes'] } | null = null;
   private srng = new Rng(1);
+  /** The assistant's own slips (kept apart from the match's random numbers, so a perfect assistant changes nothing). */
+  private arng = new Rng(2);
 
   constructor(
     home: TeamSetup,
@@ -257,6 +265,7 @@ export class MatchSim {
     private opts: MatchOptions = { commentary: false },
   ) {
     this.sides = [this.makeSide(home, 0), this.makeSide(away, 1)];
+    if (home.assistant || away.assistant) this.arng = new Rng(hashString(`asst:${home.club.id}:${away.club.id}`) ^ rng.state);
     const cap = opts.neutral?.capacity ?? (home.club.capacity || 9000 + home.club.reputation * 4200);
     const roll = rng.next();
     // A club whose fan base is known (the manager's) fills the ground only as far as demand goes;
@@ -276,7 +285,7 @@ export class MatchSim {
     const f = getFormation(t.formation);
     const active: OnPitch[] = t.xi.map((id, i) => this.makeOnPitch(this.players[id], f.slots[i], i, true));
     return {
-      club: t.club, prep: t.prep, runs: { ...(t.runs ?? {}) }, idx, tactics: { ...t.tactics, formation: f.name }, ai: t.ai, active, appeared: [...active],
+      club: t.club, prep: t.prep, asst: t.assistant, runs: { ...(t.runs ?? {}) }, idx, tactics: { ...t.tactics, formation: f.name }, ai: t.ai, active, appeared: [...active],
       bench: t.bench.map((id) => this.players[id]), subsLeft: MAX_SUBS, formation: f.name,
       windowsUsed: 0, windowMinute: -1, human: !!this.opts.human?.[idx], sentOff: [],
       goals: 0, shots: 0, onTarget: 0, corners: 0, fouls: 0, offsides: 0, possession: 0, def: 1, mid: 1, att: 1,
@@ -465,7 +474,8 @@ export class MatchSim {
   /** The numbers so far: whole match, and the half-time sheet once the first half is over. */
   analysisNow(): MatchAnalysis | null {
     if (!this.an) return null;
-    return { sides: [this.snapSide(0), this.snapSide(1)], half: this.an.half, players: this.an.players, changes: this.an.changes };
+    const read = this.sides.find((s) => s.asst)?.asst?.read;
+    return { sides: [this.snapSide(0), this.snapSide(1)], half: this.an.half, players: this.an.players, changes: this.an.changes, ...(read !== undefined ? { read } : {}) };
   }
 
   private snapSide(i: 0 | 1): SideNumbers {
@@ -1175,7 +1185,8 @@ export class MatchSim {
     let best: Player | null = null;
     let bs = -1;
     for (const p of s.bench) {
-      const r = slotRating(p, slot) * (p.injury ? 0 : 1);
+      // The manager's assistant picks the replacement he rates best, which isn't always the best.
+      const r = slotRating(p, slot) * (p.injury ? 0 : 1) * misjudge(s.asst, p.id);
       if (r > bs) { bs = r; best = p; }
     }
     return best;
@@ -1373,11 +1384,18 @@ export class MatchSim {
     for (const s of this.sides) {
       if (s.human || !this.canSub(s.idx)) continue;
       if (!this.rng.chance(this.minute >= 70 ? 0.2 : 0.08)) continue;
+      // The manager's assistant, once he takes over: a poor reader of the game misses his moment or
+      // takes off the wrong man, and a poor judge misreads who is struggling. A top one makes no slips.
+      const a = s.asst;
+      const slip = a ? Math.max(0, 20 - a.read) / 40 : 0;
+      if (slip && this.arng.chance(slip * 0.5)) continue;
       const lastWindow = this.windowsLeft(s.idx) <= 1;
       const want = lastWindow ? s.subsLeft : Math.min(s.subsLeft, this.rng.chance(0.55) ? 2 : 1);
-      const tired = [...s.active]
+      const seen = (o: OnPitch) => (o.cond + o.rating * 4) * misjudge(a, o.p.id, 'form');
+      let tired = [...s.active]
         .filter((o) => o.slot !== 'GK')
-        .sort((x, y) => x.cond + x.rating * 4 - (y.cond + y.rating * 4));
+        .sort((x, y) => seen(x) - seen(y));
+      if (slip && this.arng.chance(slip)) tired = this.arng.shuffle(tired);
       let made = 0;
       for (const o of tired) {
         if (made >= want || !this.canSub(s.idx)) break;

@@ -12,10 +12,10 @@ import { club, ordinal } from './game.js';
 import { leagueTable } from './league.js';
 import type { LivePlayer, MatchSim } from './match.js';
 import { Rng } from './rng.js';
-import { slotRating } from './tactics.js';
+import { misjudge, slotRating } from './tactics.js';
 import type { Club, Fixture, GameState, MatchAnalysis, Mentality, Player, Pos, SideNumbers, Tactics } from './types.js';
 
-/** The club's assistant manager: a fixed name per club, from its own country. */
+/** The name older saves gave a club's assistant (a fixed name per club, from its own country). */
 export function assistantName(g: GameState, c: Club): string {
   const nation = g.comps.find((k) => k.id === c.leagueId)?.nation ?? 'ENG';
   const pool = NATIONS.find((n) => n.code === nation) ?? NATIONS.find((n) => n.code === 'ENG') ?? NATIONS[0];
@@ -90,7 +90,14 @@ export function halfTimeReport(sim: MatchSim, side: 0 | 1): HalfTimeReport | nul
     poss: pct(an.sides[side].poss, an.sides[other].poss), players: an.players,
   };
   const { us, them } = c;
-  const perf = (us.shots - them.shots) + (us.onTarget - them.onTarget) * 1.5 + (c.poss - 50) / 5;
+  // How well he reads a game (1–20): a top assistant sees all of this; a weaker one sees less of it,
+  // ranks it less well and backs it up with fewer numbers. Seeded on the match so the card is steady.
+  const asst = sim.sides[side].asst;
+  const read = asst?.read ?? 20;
+  const blur = Math.max(0, 20 - read);
+  const nrng = new Rng(hashString(`ht:${asst?.id ?? 0}:${sim.score.join('-')}:${us.shots}:${them.shots}:${us.poss}`));
+  const fog = () => nrng.normal() * blur / 4;
+  const perf = (us.shots - them.shots) + (us.onTarget - them.onTarget) * 1.5 + (c.poss - 50) / 5 + fog();
   const toothless = c.poss >= 56 && us.onTarget <= 1;
   const crossed = us.crosses >= 6 && us.crossesDone / us.crosses < 0.35;
   const air = pct(us.aerialsWon, them.aerialsWon);
@@ -144,13 +151,15 @@ export function halfTimeReport(sim: MatchSim, side: 0 | 1): HalfTimeReport | nul
     if (o.slot !== 'GK' && o.yellow && o.rating < 6.4) obs.push({ w: 7, tone: 'warn', text: `${name(o)} is on a yellow and having a difficult game. One more and we're down to ten.`, evidence: `Rated ${o.rating.toFixed(1)} · condition ${Math.round(o.cond)}%` });
     else if (o.cond < 68) obs.push({ w: 4, tone: 'warn', text: `${name(o)} is tiring.`, evidence: `Condition ${Math.round(o.cond)}%` });
   }
+  for (const o of obs) o.w += fog();
   obs.sort((a, b) => b.w - a.w);
+  const maxObs = read >= 15 ? 3 : read >= 7 ? 2 : 1;
   const chosen: Observation[] = [];
   for (const o of obs) {
-    if (chosen.length >= 3) break;
+    if (chosen.length >= maxObs) break;
     // Keep a mix: at most two of the same tone.
     if (chosen.filter((x) => x.tone === o.tone).length >= 2 && obs.some((x) => !chosen.includes(x) && x.tone !== o.tone)) continue;
-    chosen.push({ tone: o.tone, text: o.text, evidence: o.evidence });
+    chosen.push({ tone: o.tone, text: o.text, evidence: read >= 8 ? o.evidence : '' });
   }
   if (!chosen.length) chosen.push({ tone: 'good', text: 'Even game. Nobody has taken control yet.', evidence: `Shots ${us.shots}-${them.shots} · Possession ${c.poss}%` });
 
@@ -205,18 +214,20 @@ export function halfTimeReport(sim: MatchSim, side: 0 | 1): HalfTimeReport | nul
     const used = new Set<number>();
     for (const { o, r } of cands.slice(0, 2)) {
       const on = bench.filter((b) => !used.has(b.id) && !b.injury && (o.slot === 'GK') === ((b.pos.GK ?? 0) >= 15))
-        .sort((a, b) => slotRating(b, o.slot) - slotRating(a, o.slot))[0];
+        .sort((a, b) => slotRating(b, o.slot) * misjudge(asst, b.id) - slotRating(a, o.slot) * misjudge(asst, a.id))[0];
       if (!on || slotRating(on, o.slot) < slotRating(o.p, o.slot) - 3) continue;
       used.add(on.id);
       sugg.push({ w: r![0], kind: 'sub', offId: o.p.id, onId: on.id, intoIdx: o.idx, cond: Math.round(o.cond), text: `${o.p.lastName} off, ${on.lastName} on.`, why: r![1] });
     }
   }
+  for (const x of sugg) x.w += fog();
   sugg.sort((a, b) => b.w - a.w);
+  const maxSugg = read >= 15 ? 3 : read >= 7 ? 2 : 1;
   const seen = new Set<string>();
   const suggestions: Suggestion[] = [];
   for (const s of sugg) {
     const key = s.kind === 'instr' ? `i:${String(s.key)}` : s.kind === 'mentality' ? 'm' : s.kind === 'sub' ? `s:${s.offId}` : `r:${s.playerId}`;
-    if (seen.has(key) || suggestions.length >= 3) continue;
+    if (seen.has(key) || suggestions.length >= maxSugg) continue;
     seen.add(key);
     const { w: _w, ...rest } = s;
     suggestions.push(rest as Suggestion);
@@ -267,6 +278,8 @@ export interface Debrief {
   /** Changes the manager made, in words. */
   changes: string[];
   turning: string | null;
+  /** The assistant's reading of the game (1–20) when the match was played. */
+  read: number;
 }
 
 const LETTERS = ['E', 'D', 'D+', 'C-', 'C', 'C+', 'B-', 'B', 'B+', 'A-', 'A', 'A+'];
@@ -289,6 +302,9 @@ export function debrief(g: GameState, f: Fixture): Debrief | null {
   if (!r || !an) return null;
   const side: 0 | 1 = f.homeId === g.userClubId ? 0 : f.awayId === g.userClubId ? 1 : 0;
   const other = (1 - side) as 0 | 1;
+  // A weaker reader of the game tells the story in fewer points and sees less of the next opponent.
+  const read = an.read ?? 20;
+  const nPoints = read >= 15 ? 3 : read >= 8 ? 2 : 1;
   const us = an.sides[side];
   const them = an.sides[other];
   const gf = side === 0 ? r.hg : r.ag;
@@ -399,14 +415,14 @@ export function debrief(g: GameState, f: Fixture): Debrief | null {
       const row = tbl.findIndex((x) => x.clubId === opp.id);
       if (row >= 0) nextLabel += ` · ${ordinal(row + 1)}${tbl[row].form.length ? `, form ${tbl[row].form.join('')}` : ''}`;
     }
-    next.push(`They set up ${shapeLine(t, t.formation).replace(/\.$/, '')}.`);
+    if (read >= 8) next.push(`They set up ${shapeLine(t, t.formation).replace(/\.$/, '')}.`);
     const tired = me.playerIds.map((id) => g.players[id]).filter((p) => p && ours.includes(p.id) && p.condition < 78)
       .sort((a, b) => a.condition - b.condition).slice(0, 3);
     if (tired.length && days <= 4) next.push(`${tired.map((p) => `${p.lastName} (${p.condition}%)`).join(', ')} ${tired.length > 1 ? 'need' : 'needs'} a rest${days <= 3 ? ' with the game so soon' : ''}.`);
     const banned = me.playerIds.map((id) => g.players[id]).filter((p) => p && p.suspended > 0);
     if (banned.length) next.push(`Suspended: ${banned.map((p) => p.lastName).join(', ')}.`);
-    if (t.closingDown === 'all-over') next.push('They press high: shorter passing and quick feet will help.');
-    else if (t.mentality === 'defensive') next.push('Expect them to sit deep: be patient and get men into the box.');
+    if (read >= 12 && t.closingDown === 'all-over') next.push('They press high: shorter passing and quick feet will help.');
+    else if (read >= 12 && t.mentality === 'defensive') next.push('Expect them to sit deep: be patient and get men into the box.');
   }
   // ── The verdict and the story.
   const pens = r.pens;
@@ -451,7 +467,7 @@ export function debrief(g: GameState, f: Fixture): Debrief | null {
   const opp = club(g, side === 0 ? f.awayId : f.homeId);
   const nSpells = r.aet ? 7 : 6;
   return {
-    label, tone, points: points.slice(0, 3), spells: { ours: us.periods.slice(0, nSpells), theirs: them.periods.slice(0, nSpells) }, codes: [code(me), code(opp)], players,
-    us, them, half, grades, positives: positives.slice(0, 3), concerns: concerns.slice(0, 3), next, nextLabel, changes, turning,
+    label, tone, points: points.slice(0, nPoints), spells: { ours: us.periods.slice(0, nSpells), theirs: them.periods.slice(0, nSpells) }, codes: [code(me), code(opp)], players,
+    us, them, half, grades, positives: positives.slice(0, nPoints), concerns: concerns.slice(0, nPoints), next, nextLabel, changes, turning: read >= 10 ? turning : null, read,
   };
 }
