@@ -27,6 +27,8 @@ export function commonKnowledge(state: GameState, p: Player): number {
   if (c && c.reputation >= 8) k += 8;
   // Regular internationals are on television every few months.
   k += Math.min(10, (p.intl?.caps ?? 0) / 5);
+  // Award winners are household names.
+  k += Math.min(12, (p.fame ?? 0) * 3);
   if (p.age <= 19) k -= 8;
   return clamp(Math.round(k), 3, 88);
 }

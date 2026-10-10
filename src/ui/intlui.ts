@@ -16,7 +16,10 @@ import { clubLink, panel, playerLink, posOrder, primaryPos, segs } from './scree
  */
 
 /** International competitions that have tables to open (friendlies don't). */
-const INTL_LINKABLE = (g: GameState, id: string) => id !== 'FR' && (['UNL', 'AC', 'AFCQ', 'CNL'].includes(id) || g.intl.comps.some((c) => c.id === id));
+const INTL_LINKABLE = (g: GameState, id: string) => id !== 'FR' && (['UNL', 'AC', 'AFCQ', 'CNL'].includes(id) || g.intl.comps.some((c) => c.id === id) || !!g.intl.tournaments?.some((t) => t.id === id));
+
+/** This summer's tournaments (World Cup, Euros…), played before the club season. */
+const summerTournaments = (g: GameState) => (g.intl.tournaments ?? []).filter((t) => t.year === g.season);
 
 const flag = (code: string) => `<span class="nat-code">${esc(code)}</span>`;
 
@@ -46,7 +49,12 @@ function playersTab(ctx: Ctx): string {
   const acNote = asian.length
     ? `<p class="pad small-note warn-note"><b>Asian Cup, Saudi Arabia (${dayLabel(g.season, calendarDay(g, '2027-01-07'))} to ${dayLabel(g.season, calendarDay(g, ASIAN_CUP_DATES.final))}):</b> ${asian.map((p) => `${esc(p.lastName)} (${esc(nationName(p.nation))})`).join(', ')} may be called up on ${dayLabel(g.season, acDay)} and miss club games until their country is knocked out.</p>`
     : '';
-  return `${nextNote}${acNote}${rows ? `<div class="scroll"><table class="grid"><thead><tr><th>Player</th><th>Nation</th><th class="n" title="Caps (estimated before 2026/27)">Caps</th><th class="n hide-xs">Goals</th><th class="n">${seasonLabel(g)}</th><th class="n">Gls</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="pad">None of your players has been capped.</p>'}
+  const tourNote = summerTournaments(g).filter((t) => g.day <= t.final + 1).map((t) => {
+    const at = c.playerIds.map((id) => g.players[id]).filter((p) => p.away?.what === `the ${t.name}`);
+    const off = c.playerIds.map((id) => g.players[id]).filter((p) => p.away?.what === `holiday after the ${t.name}`);
+    return `<p class="pad small-note warn-note"><b>${esc(t.name)}, ${esc(t.where)} (final ${dayLabel(g.season, t.final)}):</b> ${at.length ? `${at.length} of your players ${at.length > 1 ? 'are' : 'is'} still there. ` : ''}${off.length ? `${off.length} ${off.length > 1 ? 'are' : 'is'} on holiday after going out. ` : ''}Players come back three weeks after their country is knocked out, so a long run means missing part of pre-season.</p>`;
+  }).join('');
+  return `${tourNote}${nextNote}${acNote}${rows ? `<div class="scroll"><table class="grid"><thead><tr><th>Player</th><th>Nation</th><th class="n" title="Caps (estimated before 2026/27)">Caps</th><th class="n hide-xs">Goals</th><th class="n">${seasonLabel(g)}</th><th class="n">Gls</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="pad">None of your players has been capped.</p>'}
     <p class="pad small-note">Caps and goals before 2026/27 are estimates (there's no complete public record for every player); everything from here on is played in the game.</p>`;
 }
 
@@ -169,7 +177,9 @@ function fixturesTab(ctx: Ctx): string {
   const g = ctx.game;
   const I = g.intl;
   const ws = windows(g.season);
+  const summer = summerTournaments(g);
   const periods: [string, string, number, number][] = [
+    ...summer.map((t) => [t.id, t.name.replace(/ \d{4}$/, ''), Math.min(...I.matches.filter((m) => m.comp === t.id).map((m) => m.day)), t.final] as [string, string, number, number]),
     ['w0', 'Sep–Oct', ws[0].from, ws[0].to], ['w1', 'November', ws[1].from, ws[1].to],
     ...(g.season === 2026 ? [['ac', 'Asian Cup', calendarDay(g, '2027-01-07'), calendarDay(g, ASIAN_CUP_DATES.final)] as [string, string, number, number]] : []),
     ['w2', 'March', ws[2].from, ws[2].to], ['w3', 'June', ws[3].from, ws[3].to],
@@ -178,7 +188,8 @@ function fixturesTab(ctx: Ctx): string {
   const all = !!ctx.ui.intlAll;
   const ourNations = new Set(userClub(g).playerIds.map((id) => g.players[id].nation));
   const mine = new Set(userClub(g).playerIds);
-  const list = I.matches.filter((m) => m.day >= cur[2] && m.day <= cur[3] && (cur[0] !== 'ac' || m.comp === 'AC'))
+  const isTour = summer.some((t) => t.id === cur[0]);
+  const list = I.matches.filter((m) => m.day >= cur[2] && m.day <= cur[3] && (cur[0] !== 'ac' || m.comp === 'AC') && (!isTour || m.comp === cur[0]))
     .filter((m) => all || ourNations.has(m.home) || ourNations.has(m.away))
     .sort((a, b) => a.day - b.day || a.comp.localeCompare(b.comp));
   const tabs = segs(periods.map((p) => [p[0], p[1]] as [string, string]), cur[0], 'intl-win', 'w');
@@ -209,6 +220,7 @@ function tablesTab(ctx: Ctx): string {
   const I = g.intl;
   const comps: [string, string][] = [];
   const has = (id: string) => I.matches.some((m) => m.comp === id);
+  for (const t of summerTournaments(g)) comps.push([t.id, t.name]);
   if (has('UNL')) comps.push(['UNL', 'Nations League']);
   for (const c of I.comps) comps.push([c.id, c.name.replace(' qualifying', ' qual.')]);
   if (has('AC')) comps.push(['AC', 'Asian Cup']);
@@ -218,7 +230,17 @@ function tablesTab(ctx: Ctx): string {
   if (!cur) return '<p class="pad">No international competitions this season.</p>';
   const tabs = `<div class="segs comp-tabs">${comps.map(([id, label]) => `<button class="seg${id === cur ? ' on' : ''}" data-act="intl-comp" data-c="${id}">${esc(label)}</button>`).join('')}</div>`;
   let body = '';
-  if (cur === 'UNL') {
+  const tour = summerTournaments(g).find((t) => t.id === cur);
+  if (tour) {
+    const who = (a?: { id: number; name: string; nation: string; clubId: number | null }) => (a ? `${g.players[a.id] ? playerLink(g.players[a.id], a.name) : esc(a.name)} (${esc(nationName(a.nation))}${a.clubId && g.clubs.find((c) => c.id === a.clubId) ? `, ${clubLink(g, a.clubId)}` : ''})` : '-');
+    const facts = `<dl class="facts tour-facts">
+      <div><dt>Where</dt><dd>${esc(tour.where[0].toUpperCase() + tour.where.slice(1))}</dd></div>
+      <div><dt>Final</dt><dd>${esc(dayLabel(g.season, tour.final))}</dd></div>
+      ${tour.winner ? `<div><dt>Winners</dt><dd><b>${nationCell(g, tour.winner, true)}</b> · ${esc(tour.finalScore ?? '')}</dd></div>
+      <div><dt>Player of the tournament</dt><dd>${who(tour.player)}</dd></div><div><dt>Young player</dt><dd>${who(tour.young)}</dd></div>` : ''}
+    </dl><p class="pad small-note">${esc(tour.field)} The top two in each group go through${tour.thirds ? `, with the ${tour.thirds} best third-placed teams` : ''}. Players knocked out have three weeks' holiday before they report back to their clubs.</p>`;
+    body = `${facts}${knockouts(g, tour.id)}<div class="intl-groups">${tour.groups.map((gr) => groupTable(g, tour.id, gr.name, gr.teams, `Group ${gr.name}`)).join('')}</div>`;
+  } else if (cur === 'UNL') {
     body = Object.entries(UNL_GROUPS).map(([gname, teams]) => groupTable(g, 'UNL', gname, teams, `League ${gname[0]}, Group ${gname}`, gname.startsWith('A') ? 2 : 1)).join('');
     body = `<div class="intl-groups">${body}</div>${knockouts(g, 'UNL')}`;
   } else if (cur === 'AC') {
@@ -231,7 +253,8 @@ function tablesTab(ctx: Ctx): string {
     const comp = I.comps.find((c) => c.id === cur)!;
     body = `<div class="intl-groups">${comp.groups.map((gr) => groupTable(g, comp.id, gr.name || undefined, gr.teams, gr.name ? `Group ${gr.name}` : comp.name, 1)).join('')}</div>`;
   }
-  const won = I.winners.slice().reverse().map((w) => `<li>${esc(intlCompName(g, w.comp))} ${w.season}/${String((w.season + 1) % 100).padStart(2, '0')}: <b>${esc(nationName(w.nation))}</b></li>`).join('');
+  const isTourId = (id: string) => !!I.tournaments?.some((t) => t.id === id);
+  const won = I.winners.slice().reverse().map((w) => `<li>${isTourId(w.comp) ? esc(intlCompName(g, w.comp)) : `${esc(intlCompName(g, w.comp))} ${w.season}/${String((w.season + 1) % 100).padStart(2, '0')}`}: <b>${esc(nationName(w.nation))}</b>${(() => { const t = I.tournaments?.find((x) => x.id === w.comp); return t?.player ? ` <span class="small-note">· player of the tournament ${esc(t.player.name)}${t.young ? `, young player ${esc(t.young.name)}` : ''}</span>` : ''; })()}</li>`).join('');
   return `<div class="pad-top">${tabs}</div>${won ? `<ul class="honours intl-winners">${won}</ul>` : ''}${body}`;
 }
 

@@ -135,6 +135,8 @@ export function playerValue(p: Player, season: number, day: number, leagueId: st
     v *= yl < 0.6 ? 0.45 : yl < 1.2 ? 0.7 : yl < 2 ? 0.9 : 1;
   } else v *= 0.5;
   if ((p.pos.GK ?? 0) >= 20) v *= 0.7;
+  // Fame from major awards (Ballon d'Or, player of a tournament) adds up to 35%.
+  v *= 1 + Math.min(0.35, (p.fame ?? 0) * 0.07);
   v *= leagueId ? money(leagueId).values : 1;
   return Math.max(25_000, niceMoney(Math.min(v, 250 * M)));
 }

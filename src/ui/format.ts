@@ -104,6 +104,7 @@ export function statusChips(p: Player): string {
   if (p.injury) out.push(`<span class="chip bad" title="${esc(p.injury.name)}, ${injuryWeeks(p)} wk">INJ ${injuryWeeks(p)}w</span>`);
   if (p.suspended) out.push(`<span class="chip warn" title="Suspended for ${p.suspended} match(es)">SUS ${p.suspended}</span>`);
   if (p.away) out.push(`<span class="chip intl" title="Away with ${esc(nationName(p.away.nation))} (${esc(p.away.what)})">INT ${esc(p.away.nation)}</span>`);
+  if (p.cover) out.push(`<span class="chip aca" title="Academy player covering for the internationals: doesn't count towards the squad limit">ACADEMY</span>`);
   return out.join(' ');
 }
 

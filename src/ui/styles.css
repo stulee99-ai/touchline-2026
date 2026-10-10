@@ -659,6 +659,7 @@ td.alive { color: var(--good); font-weight: bold; }
 
 /* ───────── Internationals ───────── */
 .chip.intl { background: #7d5cff; color: #fff; border-color: #c4b5ff; }
+.chip.aca { background: #1f7a4d; color: #fff; border-color: #8fdcb1; }
 .nat-code { display: inline-block; min-width: 30px; font-size: 10px; font-weight: bold; text-align: center; padding: 0 3px; background: #0b1a3a; color: var(--muted); border: 1px solid #3b5790; }
 .mine-nat { font-weight: bold; }
 .win { color: var(--yellow); font-weight: bold; }

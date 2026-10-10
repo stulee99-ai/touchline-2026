@@ -161,7 +161,7 @@ export function halfTimeReport(sim: MatchSim, side: 0 | 1): HalfTimeReport | nul
     if (chosen.filter((x) => x.tone === o.tone).length >= 2 && obs.some((x) => !chosen.includes(x) && x.tone !== o.tone)) continue;
     chosen.push({ tone: o.tone, text: o.text, evidence: read >= 8 ? o.evidence : '' });
   }
-  if (!chosen.length) chosen.push({ tone: 'good', text: 'Even game. Nobody has taken control yet.', evidence: `Shots ${us.shots}-${them.shots} · Possession ${c.poss}%` });
+  if (!chosen.length) chosen.push({ tone: 'good', text: 'Even game. Nobody has taken control yet.', evidence: read >= 8 ? `Shots ${us.shots}-${them.shots} · Possession ${c.poss}%` : '' });
 
   // ── The verdict.
   let verdict: string;

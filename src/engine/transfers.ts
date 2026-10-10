@@ -206,8 +206,9 @@ export function preferredYears(p: Player): number {
 
 /* ───────────────────────── Checks for the manager ───────────────────────── */
 
-function squadCount(c: Club): number {
-  return c.playerIds.length;
+/** Players counting towards the squad limit (academy players covering a summer tournament don't). */
+export function squadCount(c: Club, players: Record<number, Player>): number {
+  return c.playerIds.filter((id) => !players[id]?.cover).length;
 }
 
 /** Why a signing can't go ahead, or null if it can. */
@@ -215,7 +216,7 @@ export function signingBlocked(state: GameState, buyer: Club, fee: number, wage:
   const f = buyer.finance;
   if (fee > f.transferBudget) return `That's more than your transfer budget of ${fmtMoney(f.transferBudget)}.`;
   if (fee > Math.max(0, f.balance) + 20 * M) return 'The club can\'t raise that much cash.';
-  if (squadCount(buyer) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players). Sell or release someone first.`;
+  if (squadCount(buyer, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players). Sell or release someone first.`;
   if (wage && wageBill(state, buyer.id) + wage > f.wageBudget) return `His wages would take you over your wage budget of ${fmtWage(f.wageBudget)} (current bill ${fmtWage(wageBill(state, buyer.id))}).`;
   if (buyer.leagueId === 'ESP' && wage) {
     const after = (squadCost(state, buyer) + wage * 52 + fee / 4) / Math.max(1, expectedRevenue(state, buyer));
@@ -566,7 +567,7 @@ export function confirmSigning(state: GameState, offerId: number): Offer | strin
     o.note = p?.clubId ? `Too late: ${p.lastName} has signed for ${club(state, p.clubId).name}.` : 'He is no longer available.';
     return o;
   }
-  if (squadCount(me) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
+  if (squadCount(me, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
   const blocked = signingBlocked(state, me, o.fee, o.wage);
   if (blocked) return blocked;
   if (!from || windowOpen(state)) {
@@ -591,7 +592,7 @@ export function approachFreeAgent(state: GameState, playerId: number): Offer | s
   const p = state.players[playerId];
   const me = userClub(state);
   if (!p || p.clubId !== null) return 'He is not a free agent.';
-  if (squadCount(me) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
+  if (squadCount(me, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
   const existing = state.offers.find((o) => o.playerId === playerId && o.buyerId === me.id && o.status === 'accepted');
   if (existing) return existing;
   return newOffer(state, { kind: 'transfer', playerId, buyerId: me.id, sellerId: 0, fee: 0, status: 'accepted', note: `${fullName(p)} is willing to talk. Offer him a contract.` });
@@ -663,7 +664,7 @@ function nextSeasonSquad(state: GameState, me: Club): { count: number; wages: nu
   let wages = 0;
   for (const id of me.playerIds) {
     const p = state.players[id];
-    if (!p || p.loan || p.preContract || p.contractEnd <= state.season + 1) continue;
+    if (!p || p.loan || p.cover || p.preContract || p.contractEnd <= state.season + 1) continue;
     count++;
     wages += p.wage;
   }
@@ -1087,8 +1088,8 @@ function aiRecalls(state: GameState, rng: Rng): void {
 /** Squads over the limit let their weakest players go. */
 function aiTrim(state: GameState, c: Club): void {
   if (c.id === state.userClubId) return;
-  while (c.playerIds.length > 30) {
-    const squad = c.playerIds.map((id) => state.players[id]).filter((p) => !p.loan).sort((a, b) => a.ca + (a.pa - a.ca) * 0.4 - (b.ca + (b.pa - b.ca) * 0.4));
+  while (squadCount(c, state.players) > 30) {
+    const squad = c.playerIds.map((id) => state.players[id]).filter((p) => !p.loan && !p.cover).sort((a, b) => a.ca + (a.pa - a.ca) * 0.4 - (b.ca + (b.pa - b.ca) * 0.4));
     const p = squad[0];
     if (!p) break;
     makeFreeAgent(state, p);
@@ -1108,7 +1109,7 @@ export function marketDay(state: GameState, rng: Rng, intensity = 1): void {
     if (c.id === me) continue;
     if (rng.chance(0.08 * busy)) aiTryBuy(state, rng, c, pool);
     if (rng.chance(0.012 * busy) && c.reputation >= 6) aiLoanOut(state, rng, c);
-    if (c.playerIds.length > 30) aiTrim(state, c);
+    if (squadCount(c, state.players) > 30) aiTrim(state, c);
   }
   // Bids for the manager's players.
   if (!me) return;

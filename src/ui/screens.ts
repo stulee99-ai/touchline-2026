@@ -32,6 +32,10 @@ import { cupById, stageLabel } from '../engine/cups.js';
 import { DOMESTIC_2026, EURO_2026 } from '../engine/db/cups-2026.js';
 import { ensureSquad, isExtPlayer } from '../engine/ext.js';
 import { awayText, nationName } from '../engine/intl.js';
+import { keepCover } from '../engine/tournaments.js';
+import { MAX_SQUAD, squadCount } from '../engine/transfers.js';
+import { ballonDays } from '../engine/ballon.js';
+import type { BallonEdition } from '../engine/types.js';
 import { resultTags } from '../engine/roundup.js';
 import { storyHtml } from './article.js';
 import { debriefHtml } from './assistantui.js';
@@ -247,7 +251,8 @@ export function squad(ctx: Ctx): string {
   const inj = all.filter((p) => p.injury).length;
   const sus = all.filter((p) => p.suspended).length;
   const avgAge = all.reduce((s, p) => s + p.age, 0) / all.length;
-  const extra = `<span class="strip-meta">${all.length} players · avg age ${avgAge.toFixed(1)}${inj ? ` · ${inj} injured` : ''}${sus ? ` · ${sus} suspended` : ''}</span>`;
+  const aca = all.filter((p) => p.cover).length;
+  const extra = `<span class="strip-meta">${all.length - aca} players${aca ? ` + ${aca} academy` : ''} · avg age ${avgAge.toFixed(1)}${inj ? ` · ${inj} injured` : ''}${sus ? ` · ${sus} suspended` : ''}</span>`;
   const filters = segs([['all', 'All'], ['gk', 'Goalkeepers'], ['def', 'Defenders'], ['mid', 'Midfielders'], ['att', 'Attackers'], ['avail', 'Available']], filter, 'squad-filter', 'f');
   const views = segs([['overview', 'Overview'], ['form', 'Form'], ['contracts', 'Contracts & wages']], view, 'squad-view', 'v');
   const formNote = view === 'form' ? '<p class="pad small-note form-key">This season, all competitions. <b>Last 5</b>: match ratings, newest on the right. <b>Trend</b>: recent form against his season average. <b>/90</b>: goals and assists per 90 minutes played. <b>CS</b>: clean sheets (keepers).</p>' : '';
@@ -303,7 +308,7 @@ export function player(ctx: Ctx): string {
     .sort((a, b) => posOrder(a) - posOrder(b) || b.ca - a.ca)
     .map((q) => `<li><button class="ls-row${q.id === p.id ? ' on' : ''}" data-act="player" data-id="${q.id}"${q.id === p.id ? ' aria-current="true"' : ''}><span class="ls-no">${q.squadNo || ''}</span><span class="ls-name">${esc(fullName(q))}</span><span class="ls-pos">${esc(primaryPos(q))}</span>${mine ? `<span class="ls-con ${q.condition < 75 ? 'low' : ''}">${Math.round(q.condition)}%</span>` : `<span class="ls-con">${q.age}</span>`}</button></li>`).join('');
   return `<div class="ls-split">
-      <section class="panel ls-list"><header class="strip" style="${clubStrip(c)}"><h2>${esc(c.name)} <small>– Squad</small></h2><span class="strip-meta">${c.playerIds.length}</span></header>
+      <section class="panel ls-list"><header class="strip" style="${clubStrip(c)}"><h2>${esc(c.name)} <small>– Squad</small></h2><span class="strip-meta">${c.playerIds.filter((id) => !g.players[id]?.cover).length}${c.playerIds.some((id) => g.players[id]?.cover) ? ` + ${c.playerIds.filter((id) => g.players[id]?.cover).length} academy` : ""}</span></header>
         <ul class="ls-rows" data-keep-scroll="pl-list">${rows}</ul></section>
       <div class="ls-detail" data-keep-scroll="pl-detail-${p.id}">${page}</div>
     </div>`;
@@ -348,6 +353,8 @@ function playerProfile(ctx: Ctx): string {
           <div><dt>Age</dt><dd>${p.age}</dd></div>
           <div><dt>Nationality</dt><dd>${nationLink(p.nation, nationName(p.nation))}</dd></div>
           <div><dt>International</dt><dd>${p.intl?.caps ? `${p.intl.caps} cap${p.intl.caps > 1 ? 's' : ''}, ${p.intl.goals} goal${p.intl.goals === 1 ? '' : 's'}${p.stats.intlApps ? ` (${p.stats.intlApps} this season)` : ''}` : 'Uncapped'}</dd></div>
+          ${p.honours?.length ? `<div><dt>Honours</dt><dd class="honours-cell">${p.honours.slice().reverse().map((h) => `<span class="chip ${/Ballon d'Or \d{4}$|Player of the/.test(h) ? 'on' : ''}">${esc(h)}</span>`).join(' ')}</dd></div>` : ''}
+          ${p.cover && p.clubId === g.userClubId ? `<div><dt>Academy</dt><dd>Covering for the internationals; goes back to the academy on ${esc(dayLabel(g.season, p.cover.until))}. <button class="btn small" data-act="keep-cover" data-id="${p.id}">Keep in the squad</button></dd></div>` : p.cover ? `<div><dt>Academy</dt><dd>Covering for the internationals until ${esc(dayLabel(g.season, p.cover.until))}</dd></div>` : ''}
           <div><dt>Preferred foot</dt><dd>${p.foot === 'B' ? 'Either' : p.foot === 'L' ? 'Left' : 'Right'}</dd></div>
           <div><dt>Condition</dt><dd>${known ? `${Math.round(p.condition)}%` : '-'}</dd></div>
           ${known && p.clubId === g.userClubId ? `<div><dt>Sharpness</dt><dd>${Math.round(sharpOf(p))}%</dd></div>` : ''}
@@ -883,10 +890,43 @@ const NO_STATS = { apps: 0, subApps: 0, goals: 0, assists: 0, ratingSum: 0, motm
 const ls = (p: Player) => p.lstats ?? NO_STATS;
 const lgRating = (p: Player) => { const n = ls(p).apps + ls(p).subApps; return n ? (ls(p).ratingSum / n).toFixed(2) : '-'; };
 
+/** Statistics › Ballon d'Or: this year's nominees or ranking, the Kopa and Yashin trophies, and past winners. */
+function ballonTab(ctx: Ctx): string {
+  const g = ctx.game;
+  const eds = g.ballon?.editions ?? [];
+  const { shortlist, ceremony } = ballonDays(g.season);
+  const cur = eds.find((e) => e.year === g.season);
+  const last = [...eds].reverse().find((e) => e.done);
+  const shown: BallonEdition | undefined = cur ?? last;
+  const who = (a: { id: number; name: string; clubId: number | null; nation: string }) => {
+    const p = g.players[a.id];
+    return `${p ? playerLink(p, a.name) : esc(a.name)}`;
+  };
+  const clubOf = (id: number | null) => (id && g.clubs.find((c) => c.id === id) ? clubLink(g, id) : '');
+  const ord = (i: number) => `${i + 1}`;
+  let body = '';
+  if (!cur) body += `<p class="pad small-note">The 30 nominees for the ${g.season} Ballon d'Or are named on ${esc(dayLabel(g.season, shortlist))}, and the winner, the Kopa Trophy (best player aged 21 or under) and the Yashin Trophy (best goalkeeper) on ${esc(dayLabel(g.season, ceremony))}. It covers the season just ended and the summer's internationals.</p>`;
+  if (shown) {
+    const done = shown.done;
+    const list = done ? shown.nominees : [...shown.nominees].sort((a, b) => a.name.localeCompare(b.name));
+    const rows = list.map((n, i) => `<tr class="${g.players[n.id]?.clubId === g.userClubId ? 'mine' : ''}"><td class="n">${done ? ord(i) : ''}</td><td>${who(n)}</td><td class="hide-xs">${clubOf(g.players[n.id]?.clubId ?? n.clubId)}</td><td>${esc(n.nation)}</td><td class="small-note">${esc(n.why || '')}</td></tr>`).join('');
+    const trophies = done ? `<dl class="facts ballon-facts"><div><dt>Ballon d'Or</dt><dd>${who(shown.nominees[0])}</dd></div>${shown.kopa ? `<div><dt>Kopa Trophy</dt><dd>${who(shown.kopa)}</dd></div>` : ''}${shown.yashin ? `<div><dt>Yashin Trophy</dt><dd>${who(shown.yashin)}</dd></div>` : ''}</dl>` : '';
+    body += `<div class="sub-head">Ballon d'Or ${shown.year}${done ? '' : ': the nominees'}</div>${done ? '' : `<p class="pad small-note">In alphabetical order. The ceremony is on ${esc(dayLabel(g.season, ceremony))}.</p>`}${trophies}
+      <div class="scroll"><table class="grid"><thead><tr><th class="n">${done ? '#' : ''}</th><th>Player</th><th class="hide-xs">Club</th><th>Nat</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  const past = eds.filter((e) => e.done).reverse();
+  if (past.length) body += `<div class="sub-head">Winners</div><div class="scroll"><table class="grid compact"><thead><tr><th>Year</th><th>Ballon d'Or</th><th class="hide-xs">Kopa</th><th class="hide-xs">Yashin</th></tr></thead><tbody>${past.map((e) => `<tr><td>${e.year}</td><td>${who(e.nominees[0])}</td><td class="hide-xs">${e.kopa ? who(e.kopa) : '-'}</td><td class="hide-xs">${e.yashin ? who(e.yashin) : '-'}</td></tr>`).join('')}</tbody></table></div>`;
+  return body;
+}
+
 export function stats(ctx: Ctx): string {
   const g = ctx.game;
   const tab = ctx.ui.statsTab ?? 'goals';
   const cid = shownComp(ctx);
+  if (tab === 'ballon') {
+    const tabs = segs([['goals', 'Top scorers'], ['assists', 'Assists'], ['rating', 'Average rating'], ['clean', 'Clean sheets'], ['ballon', "Ballon d'Or"]], tab, 'stats-tab', 't');
+    return leaguePanel(ctx, 'Statistics', `<div class="pad-top">${tabs}</div>${ballonTab(ctx)}`, '', cid);
+  }
   const inLeague = new Set(comp(g, cid).clubIds);
   const all = Object.values(g.players).filter((p) => p.clubId && inLeague.has(p.clubId));
   const apps = (p: Player) => ls(p).apps + ls(p).subApps;
@@ -901,7 +941,7 @@ export function stats(ctx: Ctx): string {
   else if (tab === 'clean') { list = all.filter((p) => ls(p).cleanSheets).sort((a, b) => ls(b).cleanSheets - ls(a).cleanSheets); val = (p) => String(ls(p).cleanSheets); label = 'Clean sheets'; }
   else { list = all.filter((p) => ls(p).goals).sort((a, b) => ls(b).goals - ls(a).goals || ls(b).assists - ls(a).assists); val = (p) => String(ls(p).goals); label = 'Goals'; }
   const rows = list.slice(0, 25).map((p, i) => `<tr class="${p.clubId === g.userClubId ? 'mine' : ''}"><td class="n">${i + 1}</td><td>${playerLink(p)}</td><td class="hide-xs">${clubLink(g, p.clubId!)}</td><td class="n">${apps(p)}</td><td class="n pts">${val(p)}</td></tr>`).join('');
-  const tabs = segs([['goals', 'Top scorers'], ['assists', 'Assists'], ['rating', 'Average rating'], ['clean', 'Clean sheets']], tab, 'stats-tab', 't');
+  const tabs = segs([['goals', 'Top scorers'], ['assists', 'Assists'], ['rating', 'Average rating'], ['clean', 'Clean sheets'], ['ballon', "Ballon d'Or"]], tab, 'stats-tab', 't');
   return leaguePanel(ctx, 'Statistics', `<div class="pad-top">${compTabs(ctx, cid)}</div><div class="pad-top">${tabs}</div>${rows ? `<div class="scroll"><table class="grid"><thead><tr><th class="n">#</th><th>Player</th><th class="hide-xs">Club</th><th class="n">Apps</th><th class="n">${label}</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="pad">No matches played yet.</p>'}<p class="pad small-note">League games only.${tab === 'rating' ? ` Minimum ${minApps} appearance${minApps > 1 ? 's' : ''}.` : ''}</p>`, '', cid);
 }
 
@@ -1329,6 +1369,15 @@ export const screenActions: Record<string, Action> = {
   'fx-view': (ctx, el) => { ctx.ui.fixturesView = el.dataset.v as 'mine' | 'round'; ctx.render(); },
   round: (ctx, el) => { ctx.ui.round = Number(el.dataset.r); ctx.render(); },
   report: (ctx, el) => ctx.go('report', { fixtureId: Number(el.dataset.id) }),
+  'keep-cover': (ctx, el) => {
+    const g = ctx.game;
+    const p = g.players[Number(el.dataset.id)];
+    if (!p?.cover) return;
+    if (squadCount(userClub(g), g.players) >= MAX_SQUAD) { ctx.toast(`Your squad is full (${MAX_SQUAD} players): sell or release someone first.`); return; }
+    keepCover(g, p);
+    ctx.toast(`${fullName(p).trim()} stays with the first team.`);
+    ctx.render();
+  },
   'club-view': (ctx, el) => {
     const id = Number(el.dataset.id);
     if (id === ctx.game.userClubId) ctx.go('squad');

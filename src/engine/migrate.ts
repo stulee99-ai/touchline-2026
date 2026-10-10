@@ -1,6 +1,8 @@
 import { roundOut } from './attributes.js';
 import { assistantName } from './analysis.js';
 import { initAssistant } from './staff.js';
+import { planTournaments, startTournaments } from './tournaments.js';
+import { hashString } from './attributes.js';
 import { initClubFinance, initContract } from './finance.js';
 import { KICKOFFS } from './fixtures.js';
 import { SAVE_VERSION } from './generate.js';
@@ -19,6 +21,7 @@ import type { GameState } from './types.js';
  * v7 → v8: internationals (the rest of this season's calendar).
  * v8 → v9: bans and yellow cards per competition. v11 → v12: training. v12 → v13: the lower leagues (built at the next season rollover).
  * v14 → v15: minutes played, rounded regens. v15 → v16: the assistant manager's ratings.
+ * v16 → v17: summer tournaments and the Ballon d'Or.
  */
 export function migrateSave(raw: unknown): GameState | null {
   const g = raw as GameState & { version: number };
@@ -126,6 +129,17 @@ export function migrateSave(raw: unknown): GameState | null {
     const me = g.clubs[g.userClubId - 1];
     if (me && !me.assistant) initAssistant(g, new Rng((g.rngState ?? 1) ^ 0xa551), assistantName(g, me));
     g.version = 16;
+  }
+  if (g.version === 16) {
+    // Summer tournaments and the Ballon d'Or. A career saved during the 2026 World Cup joins it now.
+    if (g.intl) {
+      g.intl.tournaments ??= [];
+      if (g.season === 2026 && g.day <= -13 && !g.intl.tournaments.length) {
+        planTournaments(g, new Rng(hashString(`plan:${g.seed}:2026`)), 2026);
+        startTournaments(g);
+      }
+    }
+    g.version = 17;
   }
   return g.version === SAVE_VERSION ? g : null;
 }

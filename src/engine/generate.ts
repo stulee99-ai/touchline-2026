@@ -18,7 +18,7 @@ import { holidaySharp } from './training.js';
 import { applyFlyingAnts } from './scenario.js';
 import type { Club, Competition, GameMode, GameState, Player, Pos, SeasonStats, Tactics } from './types.js';
 
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 17;
 
 export function emptyStats(): SeasonStats {
   return { apps: 0, subApps: 0, goals: 0, assists: 0, ratingSum: 0, motm: 0, yellow: 0, red: 0, cleanSheets: 0, mins: 0 };

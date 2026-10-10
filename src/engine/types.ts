@@ -144,6 +144,15 @@ export interface Player {
   loan: Loan | null;
   /** Has agreed to join another club when his contract runs out. */
   preContract: number | null;
+  /** Standing in the game: grows with major awards (Ballon d'Or, player of a tournament), fades each summer. */
+  fame?: number;
+  /** Major honours won in the game ("Ballon d'Or 2027", "World Cup winner 2030"…). */
+  honours?: string[];
+  /**
+   * Called up from the academy to cover a summer tournament: goes back on this day unless the manager
+   * keeps him. Doesn't count towards the 32-man squad limit meanwhile.
+   */
+  cover?: { club: number; until: number };
   /** The terms of a pre-contract with the manager's club: what he signs for on 1 July. */
   preTerms?: { wage: number; years: number; clauseFee: number | null };
   /** Season he joined his current club. */
@@ -407,7 +416,40 @@ export interface IntlMatch {
   leg?: 1 | 2;
   ko?: boolean;
   neutral?: boolean;
-  result: { hg: number; ag: number; pens?: [number, number]; aet?: boolean; scorers: [number, 0 | 1][] } | null;
+  result: { hg: number; ag: number; pens?: [number, number]; aet?: boolean; scorers: [number, 0 | 1][]; played?: number[] } | null;
+}
+
+export type TourKind = 'WC' | 'EURO' | 'COPA' | 'AFCON' | 'GOLD';
+
+/** A player picked out at the end of a tournament or a Ballon d'Or. */
+export interface AwardPick { id: number; name: string; nation: string; clubId: number | null }
+
+/** A summer tournament: World Cup, Euros, Copa América, Africa Cup of Nations, Gold Cup. */
+export interface Tournament {
+  /** Competition id for its matches, e.g. WC2026. */
+  id: string;
+  kind: TourKind;
+  year: number;
+  name: string;
+  /** Where it's played, in words, and the nations playing at home. */
+  where: string;
+  hosts: string[];
+  groups: { name: string; teams: string[] }[];
+  /** How many third-placed teams go through. */
+  thirds: number;
+  /** Season days of the group matchdays, the knockout rounds and the final. */
+  final: number;
+  /** How the field was decided, in a line. */
+  field: string;
+  winner?: string;
+  runnerUp?: string;
+  finalScore?: string;
+  player?: AwardPick;
+  young?: AwardPick;
+  /** Stages already announced in the news. */
+  told: string[];
+  /** Academy players each club promoted to cover for its absentees (club id -> player ids). */
+  academy?: Record<number, number[]>;
 }
 
 /** A group competition that can run over several seasons (qualifying groups). */
@@ -428,6 +470,10 @@ export interface IntlState {
   /** Trophies decided (Nations League, Asian Cup…), newest last. */
   winners: { season: number; comp: string; nation: string }[];
   nextId: number;
+  /** Summer tournaments, this summer's and past ones (absent in older saves). */
+  tournaments?: Tournament[];
+  /** Next summer's tournaments, decided when the qualifying ends (in the June window). */
+  planned?: Tournament[];
 }
 
 /* ───────────────────────── Cups ───────────────────────── */
@@ -797,6 +843,8 @@ export interface GameState {
   scouting: Scouting;
   /** Assistant managers looking for a job (absent in older saves). */
   staffMarket?: StaffMarket;
+  /** The Ballon d'Or (absent in older saves). */
+  ballon?: BallonState;
   cups: Cup[];
   nextTieId: number;
   /** Clubs from outside the six leagues taking part in this season's cups. */
@@ -817,4 +865,22 @@ export interface GameState {
   nextNewsId: number;
   /** The board's confidence in the manager, and the sack (see board.ts). */
   board?: import('./board.js').Board;
+}
+
+/** One year's Ballon d'Or, with the Kopa Trophy (best under-21) and the Yashin Trophy (best goalkeeper). */
+export interface BallonEdition {
+  year: number;
+  /** The 30 nominees, best first once the ceremony is over. */
+  nominees: (AwardPick & { score: number; why: string })[];
+  kopa?: AwardPick;
+  yashin?: AwardPick;
+  /** Nominees announced, ceremony held. */
+  shortlisted: boolean;
+  done: boolean;
+}
+
+export interface BallonState {
+  editions: BallonEdition[];
+  /** Scores from the season just ended, kept for the next ceremony (the summer's tournaments are added later). */
+  pending?: { year: number; cands: { id: number; score: number; why: string[] }[] };
 }

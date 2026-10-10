@@ -843,7 +843,10 @@ test('internationals: the Asian Cup takes players away in January; the season en
   assert.ok(g.intl.winners.some((w) => w.comp === 'UNL'), 'Nations League winner in June');
   assert.ok(g.intl.matches.some((m) => m.comp === 'EQ28'), 'Euro qualifying carries on');
   assert.ok(g.intl.comps.some((c) => c.confed === 'CONMEBOL'), 'World Cup qualifying starts in South America');
-  assert.ok(Object.values(g.players).every((p) => !p.away), 'everyone back for the new season');
+  // Everyone back for the new season, apart from the squads at the summer's tournaments (the 2027 AFCON and Gold Cup).
+  const summer = (g.intl.tournaments ?? []).filter((t) => t.year === g.season);
+  assert.deepEqual(summer.map((t) => t.kind), ['AFCON', 'GOLD']);
+  assert.ok(Object.values(g.players).every((p) => !p.away || summer.some((t) => p.away!.what === `the ${t.name}` && t.groups.some((gr) => gr.teams.includes(p.away!.nation)))), 'everyone back for the new season');
 });
 
 test('traits: derived from attributes, sensible spread, real-player reputations', async () => {
@@ -1367,7 +1370,7 @@ test('flying ants: classic mode is untouched; the scenario liquidates City and c
   assert.ok(fa.playerIds.filter((id) => (ants.players[id].pos.GK ?? 0) >= 20).length >= 3);
 
   // All of City's players are free agents, and their cash is split equally among the other 19.
-  const freed = oldCity.playerIds.map((id) => classic.players[id]);
+  const freed = oldCity.playerIds.map((id) => classic.players[id]).filter((p) => !p.cover); // not the academy players covering the World Cup
   assert.equal(ants.scenario!.freed, freed.length);
   for (const p of freed) {
     const q = Object.values(ants.players).find((x) => x.firstName === p.firstName && x.lastName === p.lastName && x.age === p.age && x.nation === p.nation)!;
@@ -1404,12 +1407,13 @@ test('flying ants: the second story comes once, with the ten players highlighted
   assert.match(top.body, /liquidated/);
   assert.match(top.body, /newly scouted/);
   assert.ok(top.players!.every((x) => g.players[x.id]?.clubId === g.scenario!.clubId && x.note.length > 20));
-  assert.equal(g.news.filter((n) => n.kind === 'headline').length, 2);
+  const stories = (w: typeof g) => w.news.filter((n) => n.kind === 'headline' && !/World Cup/.test(n.title));
+  assert.equal(stories(g).length, 2);
   assert.ok(g.scenario!.welcomed);
 
   const other = newGame(92, 'Test', 'flying-ants');
   takeCharge(other, 1, 'Test');
-  assert.equal(other.news.filter((n) => n.kind === 'headline').length, 1, 'only the first story');
+  assert.equal(stories(other).length, 1, 'only the first story');
   assert.ok(!other.scenario!.welcomed);
 });
 

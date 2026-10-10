@@ -7,6 +7,8 @@ import { internationalDay, intlSummer, newIntlSeason } from './intl.js';
 import { stadiumMonthly, stadiumSeasonEnd } from './stadium.js';
 import { initScouting, learnFromMatch, payScouts, scoutingDay, scoutingSummer } from './scouting.js';
 import { assistantOf, initAssistant, staffMonthly, staffSummer } from './staff.js';
+import { ballonDay, ballonSnapshot, fadeFame } from './ballon.js';
+import { tournamentWelcome } from './tournaments.js';
 import { aiListings, contractWarnings, makeFreeAgent, pruneMarket, releaseToFree, summerContracts, summerMarket, transferDay } from './transfers.js';
 import { CONFIRM_AHEAD, confirmKickoffs } from './kickoffs.js';
 import { comp, leagueTable } from './league.js';
@@ -285,6 +287,7 @@ function advanceTo(state: GameState, day: number, rng: Rng): void {
     transferDay(state, rng);
     scoutingDay(state, rng);
     internationalDay(state, rng);
+    ballonDay(state);
   }
   state.day = day;
   if (oldMonth !== newMonth) monthlyDevelopment(state, rng);
@@ -739,6 +742,10 @@ export function startNewSeason(state: GameState): void {
     cups: cupsWon,
   });
 
+  // Next autumn's Ballon d'Or: the season just ended (before the statistics are cleared), then fame fades.
+  ballonSnapshot(state);
+  fadeFame(state);
+
   // The June internationals (results and caps; the players are on holiday).
   intlSummer(state, rng);
 
@@ -899,6 +906,7 @@ export function startNewSeason(state: GameState): void {
   budgetNews(state);
   cupEntryNews(state);
   contractWarnings(state);
+  tournamentWelcome(state);
 }
 
 /** The stories after a round of promotion and relegation: one for the world, and the manager's own club's fate. */
@@ -1007,6 +1015,7 @@ export function takeCharge(state: GameState, clubId: number, managerName: string
   budgetNews(state);
   cupEntryNews(state);
   contractWarnings(state);
+  tournamentWelcome(state);
   // Flying Ants mode: the club's own story, on top of the inbox.
   if (state.scenario && clubId === state.scenario.clubId) flyingAntsWelcome(state);
 }

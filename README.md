@@ -350,6 +350,35 @@ National teams play in the four FIFA windows: 21 September – 6 October 2026 (a
 
 Fitness now recovers day by day, so a player who plays several internationals comes back genuinely short of fitness rather than fully recovered by the next club game.
 
+## Summer tournaments
+
+The World Cup, the Euros, the Copa América, the Africa Cup of Nations and the Gold Cup are played in their real years, in June and July before the club season (`engine/tournaments.ts`):
+
+| Tournament | Years | Teams | Format |
+|---|---|---|---|
+| World Cup | 2026 (USA, Canada, Mexico), 2030 (Spain, Portugal, Morocco), 2034 (Saudi Arabia), every four years | 48 | 12 groups of four; top two and the 8 best thirds to a round of 32 |
+| Euro | 2028 (England, Scotland, Wales, Ireland), 2032 (Italy, Turkey), every four years | 24 | 6 groups; top two and the 4 best thirds to a round of 16 |
+| Copa América | 2028 (USA), every four years | 16 | 10 CONMEBOL nations and 6 invited from CONCACAF; 4 groups, then quarter-finals |
+| Africa Cup of Nations | 2027 (Kenya, Tanzania, Uganda, 19 June – 18 July), then every four years from 2028 | 24 | 6 groups, round of 16 |
+| Gold Cup | every odd year from 2027 | 16 | 4 groups, quarter-finals (Saudi Arabia are guests in 2027) |
+
+- **The 2026 World Cup** is under way when a career starts (15 June): the real groups, with the six play-off winners (Bosnia and Herzegovina, Sweden, Turkey, Czechia, DR Congo, Iraq). Games before the start are played straight away; the rest day by day.
+- **Who qualifies** comes from the qualifying the game plays: Euro 2028 qualifying (group winners, best runners-up, play-offs, with places kept for the hosts), AFCON qualifying (the top two in each group, plus the hosts), the CONCACAF Nations League for the Gold Cup, and each confederation's World Cup qualifying. Where the game plays no qualifying, the world ratings decide. Next summer's teams are decided in the June window, and they skip the June games.
+- **Players** are called up (26 per nation, from the players in the game) and leave their clubs until their country is knocked out, then take **three weeks' holiday**: a run to the final means missing much of pre-season. They win caps, score, get tired and sometimes injured; a summer tournament counts in their caps, not the season's games. The squad screen and Internationals show who's away and why.
+- **Academy cover:** with so many away, clubs call up academy players (17 to 19, up to 14 per club) so they have twenty fit players for pre-season. They wear numbers from 40 up and an ACADEMY tag, don't count towards the 32-man squad limit, and go back to the academy the day after the last internationals return from holiday, unless the manager keeps one (**Keep in the squad** on his profile; he then counts towards the limit).
+- **News:** the tournament starting (with your players and their groups), the end of the group stage (who's through, who's back when), the semi-final and final line-ups, and the winners with the **player of the tournament** and the **young player of the tournament** (21 or under), picked from the players in the game by goals, games, how far their country went and ability. Winners, award winners and their honours appear on player profiles.
+- **Screens:** Internationals › Competitions shows the tournament (where, the final, how the field was decided, the winners and awards, the knockouts and the group tables); Fixtures & results has a tab for it; the honours list keeps every winner with the awards.
+
+## The Ballon d'Or
+
+Every autumn, for the season just ended and the summer's internationals (as the real award has been judged since 2024), with the **Kopa Trophy** (best player aged 21 or under) and the **Yashin Trophy** (best goalkeeper) (`engine/ballon.ts`).
+
+- **Scores:** when a season ends, each candidate is scored on his ability, goals, assists and average rating in all competitions, clean sheets (keepers and defenders) and his club's trophies (a top-division title, the Champions League, the Europa League and Conference League, a domestic cup, a Champions League final); attackers get a little more, as the voting does. The summer's tournaments are added in August (winners, finalists, semi-finalists, goals, player and young player of the tournament), with a little uncertainty in the voting.
+- **Dates:** the 30 nominees are named in the inbox on 7 August; the ceremony is on the last Monday of September (the ranking, the Kopa and the Yashin, and your players' places).
+- **Rewards:** the winner gains fame (his value rises, by up to 35% for the most decorated, and every manager knows more about him), +15 morale and the honour on his profile; second and third, and the Kopa and Yashin winners, gain less. Fame fades by a quarter each summer.
+- **2026:** the first award in a career has no season in the game to judge, so it goes on ability, club standing and the 2026 World Cup.
+- **Screen:** Statistics › Ballon d'Or: the nominees (or the ranking after the ceremony), the three trophies and every past winner.
+
 ## Scouting
 
 You know your own players exactly. Everyone else is seen through a fog, as in CM 01/02:

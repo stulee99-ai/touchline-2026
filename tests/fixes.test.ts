@@ -16,6 +16,7 @@ import type { Tactics } from '../src/engine/types.js';
 
 function sim(seed: number, tactics: Partial<Tactics> = {}) {
   const g = newGame(seed);
+  for (const p of Object.values(g.players)) delete p.away; // as if the World Cup were over: full-strength sides
   const [h, a] = g.clubs;
   const setup = (c: typeof h, t: Partial<Tactics>) => {
     const xi = autoPickXI(c, g.players);
@@ -275,7 +276,7 @@ test('loans: a summer loan-out can carry a January recall clause, which the borr
   const me = g.clubs.find((c) => c.name === 'Arsenal')!;
   takeCharge(g, me.id, 'Test');
   g.day = seasonDay('2026-07-20', 2026);
-  const kids = me.playerIds.map((id) => g.players[id]).filter((p) => !p.loan).sort((a, b) => a.ca - b.ca).slice(0, 8);
+  const kids = me.playerIds.map((id) => g.players[id]).filter((p) => !p.loan && !p.cover).sort((a, b) => a.ca - b.ca).slice(0, 8);
   const host = g.clubs.find((c) => c.name === 'Sunderland')!;
   let agreed = 0;
   let refused = 0;

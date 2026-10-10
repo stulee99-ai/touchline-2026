@@ -19,7 +19,7 @@ test('pyramid: a new world has the English lower leagues, 24 clubs each', () => 
   const g = newGame(11);
   assert.equal(g.comps.length, 14);
   assert.equal(g.clubs.length, 280);
-  assert.equal(SAVE_VERSION, 16);
+  assert.equal(SAVE_VERSION, 17);
   for (const [id, n] of [['ENG', 20], ['EN2', 24], ['EN3', 24], ['EN4', 24]] as const) {
     assert.equal(g.comps.find((c) => c.id === id)!.clubIds.length, n, `${id} size`);
     assert.equal(inLeague(g, id).length, n);

@@ -5,7 +5,7 @@ import {
 } from '../engine/finance.js';
 import { club, userClub } from '../engine/game.js';
 import {
-  acceptCounter, acceptLoanCounter, counterAccepted, approachFreeAgent, confirmSigning, reopenTerms, windowOpen, askingPrice, exerciseOption, makeBid, makeLoanBid, MAX_SQUAD,
+  acceptCounter, acceptLoanCounter, counterAccepted, approachFreeAgent, confirmSigning, reopenTerms, windowOpen, askingPrice, exerciseOption, makeBid, makeLoanBid, MAX_SQUAD, squadCount,
   offerRenewal, preferredYears, proposeTerms, releaseToFree, respondToBid, setListed, severanceCost, valueOf, wageDemand,
   windowInfo, withdrawOffer, summerWindow, januaryWindow, recallLoan, clauseChoices, clauseNorm, defaultClause, confirmLoan,
   approachPreContract, preContractAllowed, preContractStatus,
@@ -284,7 +284,7 @@ export function transfersScreen(ctx: Ctx): string {
   const incoming = g.offers.filter((o) => o.sellerId === g.userClubId && o.status === 'pending').length;
   const tabs = segs([['search', 'Find players'], ['listed', 'Transfer list'], ['free', 'Free agents'], ['offers', `Offers${incoming ? ` (${incoming})` : ''}`], ['news', 'Latest transfers']], tab, 'tf-tab', 't');
   const f = c.finance;
-  const summary = `<div class="money-strip"><span>Transfer budget <b>${fmtMoney(f.transferBudget)}</b></span><span>Wages <b>${fmtWage(wageBill(g, c.id))}</b> of ${fmtWage(f.wageBudget)}</span><span>Squad <b>${c.playerIds.length}</b>/${MAX_SQUAD}</span>${windowLine(g)}</div>`;
+  const summary = `<div class="money-strip"><span>Transfer budget <b>${fmtMoney(f.transferBudget)}</b></span><span>Wages <b>${fmtWage(wageBill(g, c.id))}</b> of ${fmtWage(f.wageBudget)}</span><span>Squad <b>${squadCount(c, g.players)}</b>/${MAX_SQUAD}</span>${windowLine(g)}</div>`;
   const body = tab === 'listed' ? listedTab(ctx) : tab === 'free' ? freeTab(ctx) : tab === 'offers' ? offersTab(ctx) : tab === 'news' ? newsTab(ctx) : searchTab(ctx);
   return panel(c, 'Transfers', `${summary}<div class="pad-top">${tabs}</div>${body}`);
 }
@@ -818,6 +818,8 @@ export const marketActions: Record<string, Action> = {
     if (screen === 'squad' && el.dataset.t) extra.squadView = el.dataset.t;
     if (screen === 'scouting' && el.dataset.t) extra.scoutTab = el.dataset.t;
     if (screen === 'club' && el.dataset.t) extra.clubTab = el.dataset.t;
+    if (screen === 'stats' && el.dataset.t) extra.statsTab = el.dataset.t;
+    if (screen === 'intl' && el.dataset.t) extra.intlTab = el.dataset.t;
     ctx.go(screen, extra);
   },
   'squad-view': (ctx, el) => { ctx.ui.squadView = el.dataset.v as 'overview'; ctx.render(); },

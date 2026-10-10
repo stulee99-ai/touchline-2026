@@ -42,7 +42,7 @@ export interface UiState {
   clubId?: number;
   clubTab?: 'info' | 'squad' | 'fixtures' | 'transfers' | 'stadium' | 'staff';
   clubSeason?: number;
-  statsTab?: 'goals' | 'assists' | 'rating' | 'clean';
+  statsTab?: 'goals' | 'assists' | 'rating' | 'clean' | 'ballon';
   squadFilter?: 'all' | 'gk' | 'def' | 'mid' | 'att' | 'avail';
   newsFilter?: 'all' | 'result' | 'squad' | 'board';
   /** Squad screen: selection overview or contracts and wages. */

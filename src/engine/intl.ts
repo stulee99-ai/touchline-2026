@@ -23,6 +23,8 @@ import { POS_ROLE } from './attributes.js';
 import { isExtPlayer } from './ext.js';
 import { roundRobin } from './fixtures.js';
 import { addNews, dayLabel } from './game.js';
+import { clearJuneForTournaments, coverDay, matchRng, planTournaments, startTournaments, tournamentsDay } from './tournaments.js';
+import { hashString } from './attributes.js';
 import { clamp, Rng } from './rng.js';
 import type { GameState, IntlGroupComp, IntlMatch, IntlState, Player, Pos } from './types.js';
 
@@ -35,8 +37,11 @@ export const INTL_COMP_NAMES: Record<string, string> = {
 };
 
 export function intlCompName(state: GameState, id: string): string {
-  return state.intl.comps.find((c) => c.id === id)?.name ?? INTL_COMP_NAMES[id] ?? id;
+  return state.intl.comps.find((c) => c.id === id)?.name ?? state.intl.tournaments?.find((t) => t.id === id)?.name ?? INTL_COMP_NAMES[id] ?? id;
 }
+
+/** A summer tournament's matches are played on their own random numbers. */
+const isTournament = (state: GameState, comp: string) => !!state.intl.tournaments?.some((t) => t.id === comp);
 
 /** Matchdays of each window (the Nations League's own dates), as 2026/27 dates. */
 const WINDOW_DAYS = [
@@ -87,6 +92,9 @@ export function initIntl(state: GameState, rng: Rng): void {
   state.intl = emptyIntl(state.season);
   seedCaps(state);
   buildIntlSeason(state, rng);
+  // The 2026 World Cup is already under way when a career starts.
+  planTournaments(state, new Rng(hashString(`plan:${state.seed}:${state.season}`)), state.season);
+  startTournaments(state);
 }
 
 /** Nations with players in the game. */
@@ -94,6 +102,10 @@ function ourNations(state: GameState): Set<string> {
   const s = new Set<string>();
   for (const p of Object.values(state.players)) if (p.clubId !== null && !isExtPlayer(p)) s.add(p.nation);
   return s;
+}
+
+export function addIntlMatch(state: GameState, m: Omit<IntlMatch, 'id' | 'result'>): IntlMatch {
+  return addMatch(state, m);
 }
 
 function addMatch(state: GameState, m: Omit<IntlMatch, 'id' | 'result'>): IntlMatch {
@@ -278,6 +290,10 @@ interface PlayOpts {
   news?: string[];
 }
 
+export function playIntl(state: GameState, rng: Rng, m: IntlMatch, opts: PlayOpts = {}): void {
+  play(state, rng, m, opts);
+}
+
 /** Play one international and apply it to the players involved. */
 function play(state: GameState, rng: Rng, m: IntlMatch, opts: PlayOpts = {}): void {
   const I = state.intl;
@@ -303,21 +319,23 @@ function play(state: GameState, rng: Rng, m: IntlMatch, opts: PlayOpts = {}): vo
     }
   }
   const scorers: [number, 0 | 1][] = [];
+  const played: number[] = [];
   const sides: [string, number][] = [[m.home, hg], [m.away, ag]];
   sides.forEach(([nation, goals], idx) => {
     const got = involve(state, rng, m, nation, goals, (goals > sides[1 - idx][1] ? 1 : goals < sides[1 - idx][1] ? -1 : 0), opts);
-    for (const id of got) scorers.push([id, idx as 0 | 1]);
+    for (const id of got.scorers) scorers.push([id, idx as 0 | 1]);
+    played.push(...got.played);
   });
-  m.result = { hg, ag, scorers, ...(aet ? { aet } : {}), ...(pens ? { pens } : {}) };
+  m.result = { hg, ag, scorers, ...(aet ? { aet } : {}), ...(pens ? { pens } : {}), ...(isTournament(state, m.comp) ? { played } : {}) };
   updateElo(I, m, hg, ag);
 }
 
 /** Who plays for a nation (from its players in the game), and what it does to them. Returns the scorers. */
-function involve(state: GameState, rng: Rng, m: IntlMatch, nation: string, goals: number, res: number, opts: PlayOpts): number[] {
+function involve(state: GameState, rng: Rng, m: IntlMatch, nation: string, goals: number, res: number, opts: PlayOpts): { scorers: number[]; played: number[] } {
   const I = state.intl;
   let squad = (I.squads[nation] ?? []).map((id) => state.players[id]).filter((p): p is Player => !!p && !p.injury && p.away?.nation === nation);
   if (opts.summer) squad = pickSquad(state, nation, 23);
-  if (!squad.length) return [];
+  if (!squad.length) return { scorers: [], played: [] };
   // The side: the best keeper and the ten best outfielders, with some rotation later in a window.
   const nth = I.matches.filter((x) => x.result && x.day < m.day && x.day > m.day - 12 && (x.home === nation || x.away === nation)).length;
   const jitter = nth ? 7 : 3;
@@ -354,8 +372,11 @@ function involve(state: GameState, rng: Rng, m: IntlMatch, nation: string, goals
     p.intl.caps++;
     const g = scorers.filter((id) => id === p.id).length;
     p.intl.goals += g;
-    p.stats.intlApps = (p.stats.intlApps ?? 0) + 1;
-    p.stats.intlGoals = (p.stats.intlGoals ?? 0) + g;
+    // A summer tournament comes before the club season: it counts in his caps, not this season's games.
+    if (!isTournament(state, m.comp)) {
+      p.stats.intlApps = (p.stats.intlApps ?? 0) + 1;
+      p.stats.intlGoals = (p.stats.intlGoals ?? 0) + g;
+    }
     if (opts.summer) continue;
     if (p.away) {
       p.away.apps = (p.away.apps ?? 0) + 1;
@@ -380,7 +401,7 @@ function involve(state: GameState, rng: Rng, m: IntlMatch, nation: string, goals
       }
     }
   }
-  return scorers;
+  return { scorers, played: [...minutes.keys()].map((p) => p.id) };
 }
 
 const fullName = (p: Player) => `${p.firstName} ${p.lastName}`.trim();
@@ -449,14 +470,15 @@ function returns(state: GameState): void {
   const lines = back.map((p) => {
     const apps = p.away?.apps ?? 0;
     const goals = p.away?.goals ?? 0;
-    const bits = [`${fullName(p)} (${nationName(p.away?.nation ?? p.nation)}): ${apps ? `${apps} game${apps > 1 ? 's' : ''}${goals ? `, ${goals} goal${goals > 1 ? 's' : ''}` : ''}` : 'did not play'}`];
+    const what = p.away?.what.startsWith('holiday after the ') ? ` at the ${p.away.what.slice('holiday after the '.length)}` : '';
+    const bits = [`${fullName(p)} (${nationName(p.away?.nation ?? p.nation)}${what}): ${apps ? `${apps} game${apps > 1 ? 's' : ''}${goals ? `, ${goals} goal${goals > 1 ? 's' : ''}` : ''}` : 'did not play'}`];
     if (p.injury) bits.push(`injured, ${p.injury.name.toLowerCase()}`);
     else if (p.condition < 80) bits.push(`tired (${Math.round(p.condition)}% condition)`);
     return bits.join(', ');
   });
   addNews(state, {
     kind: 'squad',
-    title: `${back.length} player${back.length > 1 ? 's' : ''} back from international duty`,
+    title: `${back.length} player${back.length > 1 ? 's' : ''} back from ${back.every((p) => p.away?.what.startsWith('holiday after the ')) ? `the ${back[0].away!.what.slice('holiday after the '.length)}` : 'international duty'}`,
     body: `Back at the club: ${lines.join('; ')}.`,
     link: { label: 'Internationals', screen: 'intl' },
   });
@@ -579,6 +601,16 @@ function progress(state: GameState, rng: Rng): void {
   asianCupProgress(state, rng);
 }
 
+/** A trophy decided: recorded, and in the news (a tournament brings its own story). */
+export function recordWinner(state: GameState, comp: string, nation: string, news?: { title: string; body: string; players: { id: number; note: string }[] }): void {
+  if (!news) {
+    state.intl.winners.push({ season: state.season, comp, nation });
+    return;
+  }
+  state.intl.winners.push({ season: state.season, comp, nation });
+  addNews(state, { kind: 'award', title: news.title, body: news.body, players: news.players, link: { label: 'Internationals', screen: 'intl', tab: 'tables' } });
+}
+
 function winner(state: GameState, comp: string, nation: string): void {
   state.intl.winners.push({ season: state.season, comp, nation });
   const mine = state.clubs.find((c) => c.id === state.userClubId)!;
@@ -655,9 +687,13 @@ export function internationalDay(state: GameState, rng: Rng): void {
     }
   }
   const today = I.matches.filter((m) => m.day === day && !m.result);
-  for (const m of today) play(state, rng, m);
-  if (today.length) progress(state, rng);
+  for (const m of today) play(state, isTournament(state, m.comp) ? matchRng(state, m) : rng, m);
+  if (today.length) {
+    progress(state, rng);
+    tournamentsDay(state);
+  }
   returns(state);
+  coverDay(state);
   // Between windows: the next window's knockouts and friendlies.
   if (s === 2026) {
     if (day === ws[0].to + 1) {
@@ -725,6 +761,9 @@ export function intlSummer(state: GameState, rng: Rng): void {
   } else {
     scheduleRounds(state, june, 2, true, (g) => g.teams.length >= 5);
   }
+  // Next summer's tournaments, from the qualifying just finished; their teams skip the June window.
+  planTournaments(state, new Rng(hashString(`plan:${state.seed}:${s + 1}`)), s + 1);
+  clearJuneForTournaments(state, w.from, w.to);
   for (const m of I.matches.filter((x) => !x.result)) play(state, rng, m, { summer: true });
 }
 
@@ -732,13 +771,18 @@ export function intlSummer(state: GameState, rng: Rng): void {
 export function newIntlSeason(state: GameState, rng: Rng): void {
   if (!state.intl) return;
   for (const p of Object.values(state.players)) p.away = null;
+  // A save from before the tournaments: decide this summer's now, from last season's qualifying.
+  if (!(state.intl.planned ?? []).some((t) => t.year === state.season)) planTournaments(state, new Rng(hashString(`plan:${state.seed}:${state.season}`)), state.season);
   state.intl.comps = state.intl.comps.filter((c) => c.groups.some((g) => g.next < g.rounds.length));
   buildIntlSeason(state, rng);
+  startTournaments(state);
 }
 
 /** How long a player is away with his country, for the screens. */
 export function awayText(state: GameState, p: Player): string {
   if (!p.away) return '';
+  if (p.away.what.startsWith('holiday after the ')) return `On holiday after the ${p.away.what.slice('holiday after the '.length)}; back on ${dayLabel(state.season, p.away.until)}`;
+  if (state.intl.tournaments?.some((t) => `the ${t.name}` === p.away!.what && !t.winner)) return `With ${nationName(p.away.nation)} at ${p.away.what}, until they go out (then three weeks off)`;
   return `With ${nationName(p.away.nation)} (${p.away.what}) until ${dayLabel(state.season, p.away.until)}`;
 }
 
