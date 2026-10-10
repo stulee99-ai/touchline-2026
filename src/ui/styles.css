@@ -76,7 +76,7 @@ select.cm {
 
 /* ── Toolbar and menu ───────────────────────── */
 .toolbar {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
+  position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 6px max(16px, calc((100vw - 1240px) / 2 + 16px));
   background: linear-gradient(180deg, #16295a 0%, #0b1733 100%);
@@ -1344,3 +1344,11 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
   .grid.market td:first-child > .link:first-child { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 }
 .grid.squad tbody tr.mine td:nth-child(2) { background: var(--row-me); }
+
+/* Full screen and home-screen apps (viewport-fit=cover): the status bar and camera cutout sit over the top of
+   the page. The top bar grows to fill that strip instead of being pushed down over the menu, and the start
+   screen and dialogs keep clear of it. */
+.toolbar { padding-top: max(6px, env(safe-area-inset-top, 0px)); }
+.setup { padding-top: calc(20px + env(safe-area-inset-top, 0px)); }
+.modal-back { padding-top: max(16px, calc(8px + env(safe-area-inset-top, 0px))); }
+@media (orientation: landscape) and (max-height: 520px) { .modal-back { padding-top: max(8px, env(safe-area-inset-top, 0px)); } }
