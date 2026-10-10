@@ -191,3 +191,25 @@ test('migration: an older save gets a rated assistant with the name he always ha
   assert.ok(a && a.read >= 3 && a.judge >= 3);
   assert.ok(m.staffMarket && m.staffMarket.pool.length === 10);
 });
+
+test('fatigue: centre backs tire least of the outfield positions, wide players and strikers most', async () => {
+  const { POS_ROLE } = await import('../src/engine/attributes.js');
+  const g = newGame(7);
+  const eng = g.clubs.filter((c) => c.leagueId === 'ENG');
+  const end: Record<string, number[]> = {};
+  for (let i = 0; i < 40; i++) {
+    const h = eng[i % eng.length];
+    const a = eng[(i * 7 + 3) % eng.length];
+    if (h === a) continue;
+    for (const id of [...h.playerIds, ...a.playerIds]) g.players[id].condition = 100;
+    const hs = { ...teamSetup(g, h, a, true), ai: false };
+    const as = { ...teamSetup(g, a, h, false), ai: false };
+    hs.tactics = { ...hs.tactics, closingDown: 'midfield', mentality: 'balanced' };
+    as.tactics = { ...as.tactics, closingDown: 'midfield', mentality: 'balanced' };
+    const sim = new MatchSim(hs, as, g.players, new Rng(500 + i), { human: [true, true] });
+    while (sim.minute < 90) sim.step();
+    for (const side of [0, 1] as const) for (const o of sim.livePlayers(side)) (end[POS_ROLE[o.slot]] ??= []).push(o.cond);
+  }
+  const avg = (r: string) => end[r].reduce((x, y) => x + y, 0) / end[r].length;
+  for (const r of ['FB', 'CM', 'WM', 'ST', 'AW']) if (end[r]) assert.ok(avg('CB') > avg(r) + 1.5, `centre backs (${avg('CB').toFixed(1)}) fresher than ${r} (${avg(r).toFixed(1)})`);
+});

@@ -229,6 +229,17 @@ function zeroNumbers(): SideNumbers {
 
 /** Keepers tire at about a third of an outfielder's rate. */
 export const GK_DRAIN = 0.35;
+
+/**
+ * How hard each position works, against a central midfielder (1). From Premier League tracking data
+ * (Bradley et al., 2009): centre backs cover about 14% less ground than central midfielders and do
+ * about a third less high-intensity running; wide midfielders do the most sprinting. Centre backs
+ * also have the least Stamina of any outfield role in the database, so without this they tired
+ * fastest of all, when in real football they tire least.
+ */
+export const ROLE_LOAD: Record<Role, number> = { GK: 1, CB: 0.6, FB: 1, DM: 0.95, CM: 1, WM: 1.05, AW: 1, AM: 0.95, ST: 0.9 };
+/** How much of a pressing game falls on each position: centre backs hold the line rather than chase. */
+export const PRESS_SHARE: Record<Role, number> = { GK: 0.1, CB: 0.5, FB: 0.8, DM: 1, CM: 1, WM: 1, AW: 1, AM: 1, ST: 1 };
 export class MatchSim {
   minute = 0;
   finished = false;
@@ -712,7 +723,9 @@ export class MatchSim {
         const gk = o.slot === 'GK';
         const runs = rn && !gk ? (rn.ball ? 1.12 : 1) * (rn.off ? 1.15 : 1) : 1;
         const base = 0.3 - o.p.attrs.stamina * 0.011 + (s.tactics.mentality === 'attacking' && !gk ? 0.02 : 0);
-        const load = gk ? GK_DRAIN * (1 + (press - 1) * 0.1) : press * runs;
+        // Each position's share of the running, and of the pressing.
+        const pressing = 1 + (press - 1) * PRESS_SHARE[o.role];
+        const load = gk ? GK_DRAIN * pressing : pressing * runs * ROLE_LOAD[o.role];
         const drain = base * load * sharpFatigue(sharpOf(o.p)) * (this.has(o.p, 'tireless') ? 0.9 : 1);
         o.cond = Math.max(20, o.cond - Math.max(gk ? 0.02 : 0.05, drain));
       }
