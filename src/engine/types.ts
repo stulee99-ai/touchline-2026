@@ -154,9 +154,15 @@ export interface Player {
    */
   cover?: { club: number; until: number };
   /** The terms of a pre-contract with the manager's club: what he signs for on 1 July. */
-  preTerms?: { wage: number; years: number; clauseFee: number | null };
+  preTerms?: { wage: number; years: number; clauseFee: number | null; signOn?: number; agentFee?: number };
+  /** Renewal talks with the manager in progress. */
+  talks?: Talks;
+  /** He won't discuss a new contract before this day (season × 365 + day), after walking out. */
+  noTalksUntil?: number;
   /** Season he joined his current club. */
   joined: number;
+  /** A free agent's asking wage before rounding (it comes down each week without a club). */
+  freeWage?: number;
   /** Day he became a free agent (only for players without a club). */
   freeSince?: number;
   /** International career: caps and goals (estimated for the years before 2026/27). */
@@ -202,6 +208,8 @@ export interface Ledger {
   saleProfit: number;
   /** Stadium building and loan repayments (outside the spending rules, as infrastructure is). */
   stadium?: number;
+  /** Signing-on fees and agents' fees. */
+  signing?: number;
 }
 
 export interface Finance {
@@ -330,6 +338,33 @@ export interface StaffMarket {
  * accepted / countered / rejected → terms (personal terms agreed) → done, or
  * withdrawn / expired / collapsed.
  */
+export type TalkKind = 'transfer' | 'free' | 'precontract' | 'renewal';
+
+/** Contract talks in progress (see negotiation.ts). Values are weekly wages. */
+export interface Talks {
+  kind: TalkKind;
+  /** His opening ask, what he wants now, and the least he'll take (hidden). */
+  ask: number;
+  position: number;
+  floor: number;
+  /** Offers left before he walks away. */
+  patience: number;
+  maxPatience: number;
+  /** His opening package: wage, signing-on fee, what his agent expects, and the length he wants. */
+  askWage: number;
+  signOn: number;
+  agentFee: number;
+  years: number;
+  round: number;
+  /** The worth of the last offer, to spot one that goes backwards. */
+  last?: number;
+  /** The last offer made, and the wage he wanted in reply (with its fees). */
+  offer?: { wage: number; years: number; signOn: number; agentFee: number; clause?: string };
+  want?: number;
+  /** When talks opened (season × 365 + day). */
+  day: number;
+}
+
 export interface Offer {
   id: number;
   kind: OfferKind;
@@ -357,8 +392,12 @@ export interface Offer {
   demand?: { wage: number; years: number };
   /** Free agents: he has said yes to the terms; the manager still has to confirm the signing. */
   agreed?: boolean;
-  /** Rounds of wage talks so far; players walk away after three. */
+  /** Rounds of wage talks so far. */
   talks?: number;
+  /** The player's side of the talks, and the one-off fees agreed. */
+  neg?: Talks;
+  signOn?: number;
+  agentFee?: number;
   /** AI bidders: the most they'll pay if the manager asks for more (hidden). */
   limit?: number;
   day: number;
@@ -775,6 +814,8 @@ export interface NewsItem {
   tag?: string;
   /** Players the story is about, shown as a list under it with a note each. */
   players?: { id: number; note: string }[];
+  /** Heading over that list (a default is chosen from the kind of story). */
+  playersTitle?: string;
   /** A button on the message that takes the manager somewhere, e.g. to an offer. */
   link?: { label: string; screen: string; playerId?: number; tab?: string };
   /** The assistant's debrief of this match (fixture id): shown in full while the fixture is kept. */
@@ -837,6 +878,8 @@ export interface GameState {
   players: Record<number, Player>;
   fixtures: Fixture[];
   news: NewsItem[];
+  /** The world transfer record (Neymar's £198m when a career starts). */
+  worldRecord?: { fee: number; name: string; from: string; to: string; year: number };
   history: SeasonRecord[];
   nextPlayerId: number;
   offers: Offer[];

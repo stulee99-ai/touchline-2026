@@ -30,7 +30,7 @@ export function stadiumTab(ctx: Ctx): string {
   const works = w ? `<div class="stadium-works"><b>${w.kind === 'new' ? `New stadium: ${esc(w.name ?? '')}` : 'Expansion'} · ${w.capacity.toLocaleString('en-GB')} seats</b>
       <span class="meter"><i style="width:${Math.round(worksProgress(g, w) * 100)}%"></i></span>
       <span class="small-note">${Math.round(worksProgress(g, w) * 100)}% done · ready ${readyText(w)} · cost ${fmtMoney(w.cost)}${w.namingRights ? ` · naming rights ${fmtMoney(w.namingRights)} a year` : ''}</span></div>` : '';
-  const loanLine = loan ? `<p class="pad small-note"><b>Stadium loan:</b> ${fmtMoney(loan.remaining)} left, ${fmtMoney(loan.monthly)} a month for ${Math.ceil(loan.monthsLeft / 12)} more year${loan.monthsLeft > 12 ? 's' : ''}. Repayments come out of the bank balance but don't count towards the spending rules.</p>` : '';
+  const loanLine = loan ? `<p class="pad small-note"><b>Stadium loan:</b> ${fmtMoney(loan.remaining)} left, ${fmtMoney(loan.monthly)} a month for ${Math.ceil(loan.monthsLeft / 12)} more year${loan.monthsLeft > 12 ? 's' : ''}. Outside the spending rules.</p>` : '';
   let plans = '';
   if (!w) {
     const opts = stadiumOptions(g, c);
@@ -46,13 +46,13 @@ export function stadiumTab(ctx: Ctx): string {
         <td class="r"><button class="btn small${no ? ' ghost' : ' primary'}" data-act="stadium-ask" data-i="${i}" title="${esc(no ?? 'The board should agree')}">Ask the board</button>${no ? '<br><span class="small-note st-no">Likely no</span>' : ''}</td></tr>`;
     }).join('');
     plans = `<div class="sub-head">Plans for the board</div>
-      <p class="pad small-note">The board decide on their confidence in you, whether the club could fill the seats, and whether it can pay: cash they can spare first, the rest on a loan (8 years for a stand, 25 for a new ground, at 5%). The extra gate is a full season of league games at today's demand; a new ground also adds 8% to commercial income. Expected revenue this season: ${fmtMoney(expectedRevenue(g, c))}.</p>
+      <p class="pad small-note">The board weigh their confidence in you, demand for seats and the cost. Loans at 5%: 8 years for a stand, 25 for a new ground. A new ground adds 8% to commercial income. Expected revenue: ${fmtMoney(expectedRevenue(g, c))}.</p>
       <div class="stadium-name"><label>New stadium name <input class="cm" id="st-name" maxlength="40" placeholder="${esc(c.name)} Stadium" autocomplete="off"></label>
         <label class="check"><input type="checkbox" id="st-rights"> Sell the naming rights instead</label></div>
       <div class="scroll"><table class="grid compact stadium-plans"><thead><tr><th>Plan</th><th class="n">Cost</th><th class="n hide-xs">Extra gate a season</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   return `<div class="club-grid">${facts}<div>${works}${loanLine}</div></div>${plans}
-    <p class="pad small-note">Your fan base: about ${Math.round(fansOf(c)).toLocaleString('en-GB')} for a typical league game. A good season brings more, a bad one loses some; a high league position or a European campaign lifts demand for this season on top.</p>`;
+    <p class="pad small-note">Your fan base: about ${Math.round(fansOf(c)).toLocaleString('en-GB')} a league game. Rises with good seasons, falls with bad ones.</p>`;
 }
 
 export const stadiumActions: Record<string, Action> = {

@@ -1353,3 +1353,10 @@ button.chip.comp:hover { filter: brightness(1.15); text-decoration: underline; }
 .setup { padding-top: calc(20px + env(safe-area-inset-top, 0px)); }
 .modal-back { padding-top: max(16px, calc(8px + env(safe-area-inset-top, 0px))); }
 @media (orientation: landscape) and (max-height: 520px) { .modal-back { padding-top: max(8px, env(safe-area-inset-top, 0px)); } }
+
+/* Contract talks */
+.deal-form .deal-reply { margin: 4px 0 8px; font-weight: 700; color: #ffe27a; }
+.deal-form .talks-facts { margin: 8px 0 4px; width: 100%; }
+.patience { letter-spacing: 2px; color: #ffe27a; }
+.deal-form label { max-width: 100%; }
+.deal-form select.cm { max-width: 100%; min-width: 0; }

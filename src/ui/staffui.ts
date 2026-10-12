@@ -34,14 +34,14 @@ function card(ctx: Ctx, a: Assistant): string {
       <div><b>${esc(a.name)}</b><small>${a.caretaker ? 'Caretaker: the youth team coach, standing in' : 'Assistant manager'} · ${nationLink(a.nation)} · age ${a.age}${a.caretaker ? '' : ` · ${fmtWage(a.wage)} · joined ${a.joined}/${String((a.joined + 1) % 100).padStart(2, '0')}`}</small></div></div>
     <div class="st-ratings">
       <div class="st-row"><span class="st-lab">Reading the game</span>${ratingBar(a.read, 'Reading the game')}<span class="st-word">${ratingWord(a.read)}</span>
-        <p class="small-note">His half-time notes and the debrief after the match (how much he spots, and how good his advice is), and his changes when you skip to full time.</p></div>
+        <p class="small-note">Half-time notes, debriefs, and his changes when you skip to full time.</p></div>
       <div class="st-row"><span class="st-lab">Judging players</span>${ratingBar(a.judge, 'Judging players')}<span class="st-word">${ratingWord(a.judge)}</span>
-        <p class="small-note">The XI and bench he picks when you let him (he has his favourites), and who he brings on.</p></div>
+        <p class="small-note">The XI, bench and substitutes he picks.</p></div>
     </div>
     ${a.caretaker
       ? `<p class="deal-msg">There's no assistant manager at the moment. ${esc(a.name)} is helping out until you appoint one from the list below.</p>`
       : `<div class="row-btns"><button class="btn ghost" data-act="asst-sack">Sack him…</button></div><p class="small-note">Sacking him costs ${fmtMoney(cost)} (six months' wages). The youth team coach stands in until you appoint someone.</p>`}
-    <p class="small-note">A world-class assistant makes the calls a good manager would; a poor one makes more mistakes. ${esc(c.name)} can attract assistants rated up to about ${Math.min(20, Math.floor(maxQualityFor(c)))} out of 20.</p>
+    <p class="small-note">${esc(c.name)} can attract assistants rated up to about ${Math.min(20, Math.floor(maxQualityFor(c)))} out of 20.</p>
   </div>`;
 }
 
@@ -61,7 +61,7 @@ export function staffTab(ctx: Ctx): string {
   }).join('');
   return `${card(ctx, a)}
     <div class="sub-head">Find an assistant</div>
-    <p class="pad small-note">Candidates for the job. The best only join big clubs; the list is drawn up afresh each month.</p>
+    <p class="pad small-note">The best only join big clubs. New list each month.</p>
     <div class="scroll"><table class="grid compact st-table"><thead><tr><th>Name</th><th class="n" title="Reading the game">Reads</th><th class="n" title="Judging players">Judges</th><th class="n" title="Weekly wage">Wage p/w</th><th></th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5" class="pad">Nobody available.</td></tr>'}</tbody></table></div>
     <div class="row-btns pad"><button class="btn" data-act="asst-search" ${wait ? 'disabled' : ''}>Search again</button>${wait ? `<span class="small-note">New names on ${esc(dayLabel(g.season, g.day + wait))}.</span>` : ''}</div>`;

@@ -62,8 +62,6 @@ export interface UiState {
   /** Player screen: which deal form is open, and the last reply from the other side. */
   deal?: 'bid' | 'loan' | 'renew' | null;
   dealMsg?: string | null;
-  /** The last contract offered on the renewal form (player, wage in thousands, years, clause), kept for the next try. */
-  renewDraft?: { id: number; wage: number; years: number; clause: string } | null;
   /** Cups screen: which competition, league phase or knockouts, and the matchday shown. */
   cupId?: string;
   cupView?: 'phase' | 'ko';

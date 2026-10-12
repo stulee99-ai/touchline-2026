@@ -44,7 +44,7 @@ function playersTab(ctx: Ctx): string {
   const acDay = calendarDay(g, ASIAN_CUP_DATES.callup);
   const asian = g.season === 2026 && g.day < calendarDay(g, ASIAN_CUP_DATES.final) ? c.playerIds.map((id) => g.players[id]).filter((p) => Object.values(ASIAN_CUP_GROUPS).flat().includes(p.nation)) : [];
   const nextNote = next
-    ? `<p class="pad small-note"><b>Next international window:</b> ${dayLabel(g.season, next.from)} to ${dayLabel(g.season, next.to)}. Squads are named six days before; your internationals leave for the whole window and come back tired (more so after long trips outside Europe), sometimes injured. There are no league games in the window.</p>`
+    ? `<p class="pad small-note"><b>Next international window:</b> ${dayLabel(g.season, next.from)} to ${dayLabel(g.season, next.to)}. Squads named six days before. Players come back tired, sometimes injured.</p>`
     : '<p class="pad small-note">No more international windows this season (the June games are played after the club season).</p>';
   const acNote = asian.length
     ? `<p class="pad small-note warn-note"><b>Asian Cup, Saudi Arabia (${dayLabel(g.season, calendarDay(g, '2027-01-07'))} to ${dayLabel(g.season, calendarDay(g, ASIAN_CUP_DATES.final))}):</b> ${asian.map((p) => `${esc(p.lastName)} (${esc(nationName(p.nation))})`).join(', ')} may be called up on ${dayLabel(g.season, acDay)} and miss club games until their country is knocked out.</p>`
@@ -55,7 +55,7 @@ function playersTab(ctx: Ctx): string {
     return `<p class="pad small-note warn-note"><b>${esc(t.name)}, ${esc(t.where)} (final ${dayLabel(g.season, t.final)}):</b> ${at.length ? `${at.length} of your players ${at.length > 1 ? 'are' : 'is'} still there. ` : ''}${off.length ? `${off.length} ${off.length > 1 ? 'are' : 'is'} on holiday after going out. ` : ''}Players come back three weeks after their country is knocked out, so a long run means missing part of pre-season.</p>`;
   }).join('');
   return `${tourNote}${nextNote}${acNote}${rows ? `<div class="scroll"><table class="grid"><thead><tr><th>Player</th><th>Nation</th><th class="n" title="Caps (estimated before 2026/27)">Caps</th><th class="n hide-xs">Goals</th><th class="n">${seasonLabel(g)}</th><th class="n">Gls</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="pad">None of your players has been capped.</p>'}
-    <p class="pad small-note">Caps and goals before 2026/27 are estimates (there's no complete public record for every player); everything from here on is played in the game.</p>`;
+    <p class="pad small-note">Caps and goals before 2026/27 are estimates.</p>`;
 }
 
 /* ───────────────────────── National squads ───────────────────────── */
@@ -88,7 +88,7 @@ function squadHtml(g: GameState, cur: string): string {
     const where = p.away?.nation === cur ? 'With the squad' : p.injury ? 'Injured' : 'At his club';
     return `<tr class="${mine ? 'mine' : ''}"><td class="slot">${primaryPos(p)}</td><td>${playerLink(p)} ${statusChips(p)}</td><td class="hide-xs">${cl ? clubLink(g, cl.id) : ''}</td><td class="n">${p.age}</td><td class="n">${p.intl?.caps ?? 0}</td><td class="n hide-xs">${p.intl?.goals ?? 0}</td><td class="small-note hide-sm">${where}</td></tr>`;
   }).join('');
-  return `<p class="pad small-note"><b>${esc(nationName(cur))}${named ? ` · ${players.length} players` : ' · likely squad'}.</b> ${status}${nextLine} Only players at clubs in the game are shown${named && players.length < 23 ? '; the rest of the squad play elsewhere' : ''}. Your players are highlighted.</p>
+  return `<p class="pad small-note"><b>${esc(nationName(cur))}${named ? ` · ${players.length} players` : ' · likely squad'}.</b> ${status}${nextLine} Players at clubs in the game only.</p>
     <div class="scroll"><table class="grid compact intl-squad"><thead><tr><th>Pos</th><th>Player</th><th class="hide-xs">Club</th><th class="n">Age</th><th class="n" title="Caps">Caps</th><th class="n hide-xs">Goals</th><th class="hide-sm">Now</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="pad">Nobody from the clubs in the game.</td></tr>'}</tbody></table></div>`;
 }
 
@@ -153,7 +153,7 @@ export function nationScreen(ctx: Ctx): string {
     </dl></div>`;
   const tabs = segs([['squad', 'Squad'], ['fixtures', 'Fixtures & results']], tab, 'nation-tab', 't');
   const body = tab === 'fixtures'
-    ? `${games.length ? `<div class="scroll"><table class="grid fixtures intl"><tbody>${games.map((m) => matchRow(g, m, mine)).join('')}</tbody></table></div>` : '<p class="pad small-note">No games arranged yet this season. Friendlies and knockout ties are arranged nearer the time.</p>'}${nationGroups(g, code)}`
+    ? `${games.length ? `<div class="scroll"><table class="grid fixtures intl"><tbody>${games.map((m) => matchRow(g, m, mine)).join('')}</tbody></table></div>` : '<p class="pad small-note">No games arranged yet.</p>'}${nationGroups(g, code)}`
     : squadHtml(g, code);
   return `<section class="panel"><header class="strip nation-strip"><h2>${flag(code)} ${esc(nationName(code))} <small>– National team</small></h2><button class="btn small" data-act="back">◄ Back</button></header>
     ${facts}<div class="pad-top">${tabs}</div>${body}</section>`;
@@ -238,7 +238,7 @@ function tablesTab(ctx: Ctx): string {
       <div><dt>Final</dt><dd>${esc(dayLabel(g.season, tour.final))}</dd></div>
       ${tour.winner ? `<div><dt>Winners</dt><dd><b>${nationCell(g, tour.winner, true)}</b> · ${esc(tour.finalScore ?? '')}</dd></div>
       <div><dt>Player of the tournament</dt><dd>${who(tour.player)}</dd></div><div><dt>Young player</dt><dd>${who(tour.young)}</dd></div>` : ''}
-    </dl><p class="pad small-note">${esc(tour.field)} The top two in each group go through${tour.thirds ? `, with the ${tour.thirds} best third-placed teams` : ''}. Players knocked out have three weeks' holiday before they report back to their clubs.</p>`;
+    </dl><p class="pad small-note">${esc(tour.field)} The top two in each group go through${tour.thirds ? `, with the ${tour.thirds} best third-placed teams` : ''}. Players knocked out get three weeks' holiday.</p>`;
     body = `${facts}${knockouts(g, tour.id)}<div class="intl-groups">${tour.groups.map((gr) => groupTable(g, tour.id, gr.name, gr.teams, `Group ${gr.name}`)).join('')}</div>`;
   } else if (cur === 'UNL') {
     body = Object.entries(UNL_GROUPS).map(([gname, teams]) => groupTable(g, 'UNL', gname, teams, `League ${gname[0]}, Group ${gname}`, gname.startsWith('A') ? 2 : 1)).join('');

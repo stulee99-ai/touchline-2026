@@ -74,7 +74,7 @@ export function compareScreen(ctx: Ctx): string {
   };
   const table = `<div class="scroll"><table class="grid cmp"><thead><tr><th></th>${head}</tr></thead><tbody>
     ${facts}${group('Technical', TECHNICAL)}${group('Mental', MENTAL)}${group('Physical', PHYSICAL)}${anyGK ? group('Goalkeeping', GOALKEEPING) : ''}
-  </tbody></table></div><p class="pad small-note">The highlighted figure is the best of the group. Ranges mean you don't know that player well yet; scouting narrows them.</p>`;
+  </tbody></table></div><p class="pad small-note">Highlighted: best of the group. Ranges: not fully scouted.</p>`;
   return panel(me, 'Compare players', table, '<button class="btn small" data-act="back">◄ Back</button>');
 }
 

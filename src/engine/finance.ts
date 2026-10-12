@@ -166,7 +166,7 @@ export function ledgerRevenue(l: Ledger): number {
 }
 
 export function ledgerProfit(l: Ledger): number {
-  return ledgerRevenue(l) + l.saleProfit - l.wages - l.amortisation - l.operating - l.loanFeesOut - l.severance - (l.scouting ?? 0);
+  return ledgerRevenue(l) + l.saleProfit - l.wages - l.amortisation - l.operating - l.loanFeesOut - l.severance - (l.scouting ?? 0) - (l.signing ?? 0);
 }
 
 function homeGames(state: GameState, c: Club): number {

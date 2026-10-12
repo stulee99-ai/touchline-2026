@@ -46,7 +46,7 @@ test('pre-contracts: clubs abroad from 1 January; English clubs only in the last
   g.day = on(g, g.season + 1, 0, 10); // January
   assert.equal(preContractStatus(g, abroad)!.open, true, 'a player abroad is free to talk in January');
   assert.equal(preContractStatus(g, home)!.open, false, 'an English club can\'t talk to a player at another English club in January');
-  assert.match(preContractStatus(g, home)!.why, /last month/);
+  assert.match(preContractStatus(g, home)!.why, /final month/);
   g.day = on(g, g.season + 1, 5, 5); // June
   assert.equal(preContractStatus(g, home)!.open, true, 'in the last month he can talk');
   // A player with a longer contract, or the manager's own, isn't eligible at all.

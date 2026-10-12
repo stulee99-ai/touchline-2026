@@ -6,11 +6,12 @@ import {
 import { club, userClub } from '../engine/game.js';
 import {
   acceptCounter, acceptLoanCounter, counterAccepted, approachFreeAgent, confirmSigning, reopenTerms, windowOpen, askingPrice, exerciseOption, makeBid, makeLoanBid, MAX_SQUAD, squadCount,
-  offerRenewal, preferredYears, proposeTerms, releaseToFree, respondToBid, setListed, severanceCost, valueOf, wageDemand,
+  offerRenewal, proposeTerms, releaseToFree, respondToBid, setListed, severanceCost, valueOf,
   windowInfo, withdrawOffer, summerWindow, januaryWindow, recallLoan, clauseChoices, clauseNorm, defaultClause, confirmLoan,
-  approachPreContract, preContractAllowed, preContractStatus,
+  approachPreContract, preContractAllowed, preContractStatus, talksFor, renewalTalks, renewalBlocked,
 } from '../engine/transfers.js';
-import type { Club, GameState, Ledger, Offer, Player, Pos } from '../engine/types.js';
+import { patienceDots } from '../engine/negotiation.js';
+import type { Club, GameState, Ledger, Offer, Player, Pos, Talks } from '../engine/types.js';
 import type { Action, Ctx, Screen } from './ctx.js';
 import { esc, fullName, pos, statusChips } from './format.js';
 import { type SCol, sortableTable } from './sortable.js';
@@ -133,7 +134,7 @@ function searchTab(ctx: Ctx): string {
   const minSelect = (i: number, cur: number) => `<select class="cm" data-change="tf-attr-min" data-i="${i}" aria-label="Minimum for attribute ${i + 1}">${Array.from({ length: 20 }, (_, j) => j + 1).map((v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v}+</option>`).join('')}</select>`;
   const attrRows = attrs.map(([k, min], i) => `<span class="tf-attr">${attrSelect(i, k)}${minSelect(i, min)}<button class="btn small ghost" data-act="tf-attr-del" data-i="${i}" aria-label="Remove ${ATTR_LABEL[k]}">✕</button></span>`).join('');
   const attrBox = `<div class="tf-attrs"><span class="tf-attrs-label">Attributes</span>${attrRows}${attrs.length < 5 ? `<button class="btn small" data-act="tf-attr-add">+ Add attribute${attrs.length ? '' : ' (up to 5)'}</button>` : ''}${attrs.length ? '<button class="link small" data-act="tf-attr-clear">Clear</button>' : ''}
-    ${attrs.length ? '<span class="small-note tf-attrs-note">Judged on what you know: the middle of each range your scouts give. Ranges (12–16) are estimates; scout a player to be sure.</span>' : ''}</div>`;
+    ${attrs.length ? '<span class="small-note tf-attrs-note">Uses the middle of each scouted range.</span>' : ''}</div>`;
   const name = tf.name.trim().toLowerCase();
   const known = (p: Player, k: AttrKey) => { const [lo, hi] = attrRange(g, p, k); return (lo + hi) / 2; };
   // Pre-contracts: whether the rules let the manager talk to players from each league today (worked out once per league).
@@ -183,7 +184,7 @@ function searchTab(ctx: Ctx): string {
         <span class="tf-pageno">Page <b>${page + 1}</b> of ${pages.toLocaleString('en-GB')}</span>
         <button class="btn small" data-act="tf-page" data-p="${page + 1}" ${page >= pages - 1 ? 'disabled' : ''}>Next ►</button><button class="btn small" data-act="tf-page" data-p="${pages - 1}" ${page >= pages - 1 ? 'disabled' : ''} aria-label="Last page">»</button></div>`
     : '';
-  return `${filters}${attrBox}<p class="pad small-note">${list.length.toLocaleString('en-GB')} players match${list.length > per ? `; showing ${from.toLocaleString('en-GB')}–${to.toLocaleString('en-GB')}` : ''}. Click a name to see him and make an offer.</p>
+  return `${filters}${attrBox}<p class="pad small-note">${list.length.toLocaleString('en-GB')} players match${list.length > per ? `; showing ${from.toLocaleString('en-GB')}–${to.toLocaleString('en-GB')}` : ''}.</p>
     ${pager}<div class="scroll"><table class="grid market">${tableHead(key, attrs.map(([k]) => k))}<tbody>${playerRows(g, shown, attrs.map(([k]) => k)) || `<tr><td colspan="${9 + attrs.length}" class="pad">Nobody matches.</td></tr>`}</tbody></table></div>${pager}`;
 }
 
@@ -215,7 +216,7 @@ function freeTab(ctx: Ctx): string {
   const g = ctx.game;
   const list = Object.values(g.players).filter((p) => p.clubId === null);
   const { head, rows } = sortableTable(ctx, 'tf-free', marketCols(g), list, { key: 'ca', dir: -1 }, (x, y) => y.ca - x.ca);
-  return `<p class="pad small-note">Out-of-contract players can be signed at any time, even with the window shut. There's no fee, just wages. Click a heading to sort.</p>
+  return `<p class="pad small-note">Sign any time, window or not. No fee.</p>
     ${list.length ? `<div class="scroll"><table class="grid market"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="pad">No free agents at the moment. Players whose contracts run out join this list in the summer.</p>'}`;
 }
 
@@ -322,14 +323,39 @@ export function dealPanel(ctx: Ctx, p: Player): string {
   return `<div class="deal">${facts}${msg}${actions}</div>`;
 }
 
-/** How clauses work at this club, for the contract forms. */
+/** The one fact about clauses worth stating at this club (the options already show their wage effect). */
 function clauseNote(c: Club): string {
-  const n = clauseNorm(c.leagueId);
-  return n === 'spain'
-    ? 'A release clause lets any club that bids it talk to him. In Spain every contract must have one: a high one costs a little more in wages, a low one a little less.'
-    : n === 'portugal'
-      ? 'A release clause lets any club that bids it talk to him. Most contracts in Portugal have one: no clause costs about 12% more in wages, a low one a little less.'
-      : 'A release clause lets any club that bids it talk to him. They are unusual here, so most contracts have none; a player given a way out takes a little less in wages. Removing one he already has costs more.';
+  return clauseNorm(c.leagueId) === 'spain' ? 'Every contract in Spain has a release clause.' : '';
+}
+
+/** Signing-on and agent fees agreed, as a facts row. */
+function extrasRow(o: Offer): string {
+  const parts = [o.signOn ? `${fmtMoney(o.signOn)} signing-on` : '', o.agentFee ? `${fmtMoney(o.agentFee)} agent` : ''].filter(Boolean);
+  return parts.length ? `<div><dt>One-off fees</dt><dd>${parts.join(' · ')}</dd></div>` : '';
+}
+
+/** Money in £m for a form field. */
+const mVal = (v: number): string => String(Math.round((v / M) * 100) / 100);
+
+/** The contract offer form shared by signings, pre-contracts and renewals. */
+function termsForm(g: GameState, p: Player, me: Club, t: Talks, o: { title: string; note?: string; act: string; id: number; clause: string; renewal: boolean; fee?: number; buttons: string; facts: string }): string {
+  const last = t.offer;
+  const wage = t.want ?? last?.wage ?? t.askWage;
+  const extra = clauseNote(me);
+  return `<div class="deal-form terms"><b>${o.title}</b>${o.note ? `<p class="deal-reply">${esc(o.note)}</p>` : ''}
+    <label>Wage £<input class="cm money-in" id="deal-wage" type="number" min="0" step="1" value="${Math.round(wage / 1000)}">k a week</label>
+    ${yearsSelect('deal-years', last?.years ?? t.years)}
+    ${clauseSelect(g, p, me, o.renewal, o.fee ?? 0, last?.clause ?? o.clause)}
+    <label>Signing-on £<input class="cm money-in" id="deal-signon" type="number" min="0" step="0.05" value="${mVal(last?.signOn ?? t.signOn)}">m</label>
+    <label>Agent £<input class="cm money-in" id="deal-agent" type="number" min="0" step="0.05" value="${mVal(last?.agentFee ?? t.agentFee)}">m</label>
+    <div class="row-btns">${o.buttons}</div>
+    <dl class="facts talks-facts">
+      <div><dt>He asked</dt><dd>${fmtWage(t.askWage)}${t.signOn ? ` + ${fmtMoney(t.signOn)} signing-on` : ''}</dd></div>
+      <div><dt>Agent expects</dt><dd>${fmtMoney(t.agentFee)}</dd></div>
+      <div><dt>Patience</dt><dd><span class="patience" title="Offers left before he walks away" aria-label="${t.patience} of ${t.maxPatience} offers left">${patienceDots(t)}</span></dd></div>
+      ${o.facts}
+    </dl>
+    <p class="small-note">Wages come from the wage budget, fees from the transfer budget.${extra ? ` ${extra}` : ''}</p></div>`;
 }
 
 /** The release clause choices for a contract (signing or renewal). */
@@ -349,15 +375,15 @@ function ownActions(ctx: Ctx, p: Player): string {
     if (talks) return talks;
     return `${preContractBox(ctx, p)}<div class="row-btns">${opt}<button class="btn ghost" data-act="confirm" data-key="release-${p.id}">End loan early…</button></div>${ctx.ui.confirm === `release-${p.id}` ? `<div class="confirm">Send ${esc(fullName(p))} back to ${esc(club(g, p.loan.parentId).name)}? <button class="btn danger" data-act="release" data-id="${p.id}">Send back</button> <button class="btn" data-act="confirm-cancel">Keep him</button></div>` : ''}`;
   }
-  const draft = ctx.ui.renewDraft?.id === p.id ? ctx.ui.renewDraft : null;
-  const clauseHtml = clauseSelect(g, p, me, true, 0, draft?.clause ?? 'keep');
+  const blockedTalk = renewalBlocked(g, p);
   const renew = ctx.ui.deal === 'renew'
-    ? `<div class="deal-form"><b>New contract</b>
-        <label>Wage £<input class="cm money-in" id="deal-wage" type="number" min="0" step="1" value="${draft ? draft.wage : Math.round(niceWage(p.wage * 1.1) / 1000)}">k a week</label>
-        ${yearsSelect('deal-years', draft ? draft.years : Math.max(preferredYears(p), Math.min(5, p.contractEnd - ctx.game.season + 1)))}
-        ${clauseHtml}
-        <button class="btn primary" data-act="renew-offer" data-id="${p.id}">Offer contract</button><button class="btn ghost" data-act="deal-close">Cancel</button>
-        <p class="small-note">${yearsLeft(p, g.season, g.day) >= 1 ? `He's on ${fmtWage(p.wage)} to June ${p.contractEnd}. He doesn't need a new deal, so expect him to want a rise, and he won't sign for less time than he has left. ` : ''}${clauseNote(me)}</p></div>`
+    ? blockedTalk
+      ? `<p class="deal-msg">${esc(blockedTalk)}</p>`
+      : termsForm(g, p, me, renewalTalks(g, p), {
+        title: 'New contract', act: 'renew-offer', id: p.id, clause: 'keep', renewal: true,
+        buttons: `<button class="btn primary" data-act="renew-offer" data-id="${p.id}">Offer contract</button><button class="btn ghost" data-act="deal-close">Cancel</button>`,
+        facts: `<div><dt>Now</dt><dd>${fmtWage(p.wage)} to June ${p.contractEnd}</dd></div><div><dt>Wage bill</dt><dd>${fmtWage(wageBill(g, me.id))} of ${fmtWage(me.finance.wageBudget)}</dd></div>`,
+      })
     : '';
   const clauseWarn = p.releaseClause ? `<p class="deal-msg">Release clause: <b>${fmtMoney(p.releaseClause)}</b>. Any club that bids it can talk to him, and you can't refuse. Change or remove it with a new contract.</p>` : '';
   const cost = severanceCost(g, p);
@@ -380,7 +406,7 @@ function preContractBox(ctx: Ctx, p: Player): string {
   // Already signed with the manager: the facts above say so.
   if (!st || p.preContract === userClub(ctx.game).id) return '';
   if (!st.open) return `<p class="small-note pc-note">${esc(st.why)}</p>`;
-  return `<div class="pc-box"><b>Free to talk</b><p class="small-note">${esc(st.why)} His club has to be told, but gets no fee and no say.</p>
+  return `<div class="pc-box"><b>Free to talk</b><p class="small-note">${esc(st.why)}</p>
     <div class="row-btns"><button class="btn primary" data-act="precontract" data-id="${p.id}">Offer a pre-contract…</button></div></div>`;
 }
 
@@ -393,18 +419,15 @@ function preContractTalks(ctx: Ctx, p: Player): string {
   const owner = club(g, o.sellerId);
   if (o.agreed && o.wage !== undefined) {
     return `<div class="deal-form agreed"><b>Pre-contract agreed</b><p class="small-note">${esc(o.note ?? '')}</p>
-      <dl class="facts" style="margin:6px 0;width:100%"><div><dt>Wage</dt><dd>${fmtWage(o.wage)}</dd></div><div><dt>Contract</dt><dd>${o.years} year${o.years === 1 ? '' : 's'} from 1 July</dd></div><div><dt>Release clause</dt><dd>${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}</dd></div><div><dt>Fee</dt><dd>None: his contract with ${esc(owner.name)} runs out</dd></div></dl>
+      <dl class="facts" style="margin:6px 0;width:100%"><div><dt>Wage</dt><dd>${fmtWage(o.wage)}</dd></div><div><dt>Contract</dt><dd>${o.years} year${o.years === 1 ? '' : 's'} from 1 July</dd></div><div><dt>Release clause</dt><dd>${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}</dd></div>${extrasRow(o)}<div><dt>Fee</dt><dd>None: his contract with ${esc(owner.name)} runs out</dd></div></dl>
       <div class="row-btns"><button class="btn primary" data-act="deal-sign" data-id="${o.id}">Sign the pre-contract</button><button class="btn" data-act="terms-reopen" data-id="${o.id}">Change the terms</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button></div>
-      <p class="small-note">Once signed it's binding: he joins you on 1 July and can't be sold or renewed by ${esc(owner.name)} in the meantime. Until you confirm, he could still agree a new deal or another move.</p></div>`;
+      <p class="small-note">Binding once signed. Until then he can still go elsewhere.</p></div>`;
   }
-  const demand = o.demand?.wage ?? niceWage(wageDemand(g, p, me) * 1.1);
-  const start = o.demand ? demand : niceWage(Math.max(p.wage, demand * 0.85));
-  return `<div class="deal-form"><b>Pre-contract: personal terms</b>${o.note ? `<p class="small-note">${esc(o.note)}</p>` : ''}
-    <label>Wage £<input class="cm money-in" id="deal-wage" type="number" min="0" step="1" value="${Math.round(start / 1000)}">k a week</label>
-    ${yearsSelect('deal-years', o.demand?.years ?? preferredYears(p))}
-    ${clauseSelect(g, p, me, false, 0, o.clause ?? defaultClause(me))}
-    <button class="btn primary" data-act="terms-offer" data-id="${o.id}">Offer contract</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button>
-    <p class="small-note">He earns ${fmtWage(p.wage)} now. There's no fee, so he'll want a little more in wages. His wages count against next season's budget (${fmtWage(me.finance.wageBudget)}), alongside the players staying and anyone else joining. ${clauseNote(me)}</p></div>`;
+  return termsForm(g, p, me, talksFor(g, o), {
+    title: 'Pre-contract: personal terms', note: o.note, act: 'terms-offer', id: o.id, clause: o.clause ?? defaultClause(me), renewal: false,
+    buttons: `<button class="btn primary" data-act="terms-offer" data-id="${o.id}">Offer contract</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button>`,
+    facts: `<div><dt>Now</dt><dd>${fmtWage(p.wage)} at ${esc(owner.name)}</dd></div><div><dt>Next season's wage budget</dt><dd>${fmtWage(me.finance.wageBudget)}</dd></div>`,
+  });
 }
 
 function buyActions(ctx: Ctx, p: Player): string {
@@ -421,24 +444,21 @@ function buyActions(ctx: Ctx, p: Player): string {
     return `<div class="deal-form agreed"><b>Loan agreed</b><p class="small-note">${esc(o.note ?? '')}</p>
       <dl class="facts" style="margin:6px 0;width:100%"><div><dt>From</dt><dd>${esc(seller.name)}</dd></div><div><dt>Length</dt><dd>To the end of the season</dd></div><div><dt>You pay</dt><dd>${Math.round(share * 100)}% of his wage (${fmtWage(niceWage(p.wage * share))})</dd></div><div><dt>Option to buy</dt><dd>${o.optionFee ? fmtMoney(o.optionFee) : 'None'}</dd></div><div><dt>January recall</dt><dd>${o.recall ? `${esc(seller.name)} can recall him` : 'No'}</dd></div></dl>
       <div class="row-btns"><button class="btn primary" data-act="loan-confirm" data-id="${o.id}">Confirm loan</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button></div>
-      <p class="small-note">Nothing is done until you confirm. Until then another club could still take him.${windowOpen(g) ? '' : ' The window is shut: once you confirm, he joins the day it opens.'}</p></div>`;
+      <p class="small-note">Not done until you confirm.${windowOpen(g) ? '' : ' Window shut: he joins the day it opens.'}</p></div>`;
   }
   if (o && o.status === 'accepted' && o.agreed && o.wage !== undefined) {
     const clause = o.clauseFee ? fmtMoney(o.clauseFee) : 'none';
     return `<div class="deal-form agreed"><b>Terms agreed</b><p class="small-note">${esc(o.note ?? '')}</p>
-      <dl class="facts" style="margin:6px 0;width:100%"><div><dt>Wage</dt><dd>${fmtWage(o.wage)}</dd></div><div><dt>Contract</dt><dd>${o.years} year${o.years === 1 ? '' : 's'}</dd></div><div><dt>Release clause</dt><dd>${clause}</dd></div><div><dt>Fee</dt><dd>${o.fee ? `${fmtMoney(o.fee)} to ${esc(club(g, o.sellerId).name)}` : 'None (free agent)'}</dd></div></dl>
+      <dl class="facts" style="margin:6px 0;width:100%"><div><dt>Wage</dt><dd>${fmtWage(o.wage)}</dd></div><div><dt>Contract</dt><dd>${o.years} year${o.years === 1 ? '' : 's'}</dd></div><div><dt>Release clause</dt><dd>${clause}</dd></div>${extrasRow(o)}<div><dt>Fee</dt><dd>${o.fee ? `${fmtMoney(o.fee)} to ${esc(club(g, o.sellerId).name)}` : 'None (free agent)'}</dd></div></dl>
       <div class="row-btns"><button class="btn primary" data-act="deal-sign" data-id="${o.id}">Sign him</button><button class="btn" data-act="terms-reopen" data-id="${o.id}">Change the terms</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button></div>
-      <p class="small-note">Nothing is signed${o.fee ? ' or paid' : ''} until you confirm. Until then another club could still sign him.${o.fee && !windowOpen(g) ? ' The window is shut: once you confirm, the deal goes through the day it opens.' : ''}</p></div>`;
+      <p class="small-note">Not signed until you confirm.${o.fee && !windowOpen(g) ? ' Window shut: he joins the day it opens.' : ''}</p></div>`;
   }
   if (o && o.status === 'accepted') {
-    const demand = o.demand?.wage ?? wageDemand(g, p, me);
-    const start = o.demand ? demand : niceWage(Math.max(p.wage, demand * 0.85));
-    return `<div class="deal-form"><b>Personal terms</b>${o.note ? `<p class="small-note">${esc(o.note)}</p>` : ''}
-      <label>Wage £<input class="cm money-in" id="deal-wage" type="number" min="0" step="1" value="${Math.round(start / 1000)}">k a week</label>
-      ${yearsSelect('deal-years', o.demand?.years ?? preferredYears(p))}
-      ${clauseSelect(g, p, me, false, o.fee, o.clause ?? defaultClause(me))}
-      <button class="btn primary" data-act="terms-offer" data-id="${o.id}">Offer contract</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button>
-      <p class="small-note">He earns ${fmtWage(p.wage)} now. Your wage bill is ${fmtWage(wageBill(g, me.id))} of a ${fmtWage(me.finance.wageBudget)} budget. ${clauseNote(me)}</p></div>`;
+    return termsForm(g, p, me, talksFor(g, o), {
+      title: 'Personal terms', note: o.note, act: 'terms-offer', id: o.id, clause: o.clause ?? defaultClause(me), renewal: false, fee: o.fee,
+      buttons: `<button class="btn primary" data-act="terms-offer" data-id="${o.id}">Offer contract</button><button class="btn ghost" data-act="offer-withdraw" data-id="${o.id}">Walk away</button>`,
+      facts: `<div><dt>Now</dt><dd>${fmtWage(p.wage)}</dd></div><div><dt>Wage bill</dt><dd>${fmtWage(wageBill(g, me.id))} of ${fmtWage(me.finance.wageBudget)}</dd></div>${o.fee ? `<div><dt>Fee agreed</dt><dd>${fmtMoney(o.fee)}</dd></div>` : ''}`,
+    });
   }
   if (o && o.status === 'countered' && o.kind === 'transfer') {
     return `<div class="deal-form"><b>${esc(club(g, o.sellerId).name)} want ${fmtMoney(o.counterFee!)}</b>
@@ -467,7 +487,7 @@ function buyActions(ctx: Ctx, p: Player): string {
     ? `<div class="deal-form"><b>Transfer offer</b>
         <label>Fee £<input class="cm money-in" id="deal-fee" type="number" min="0" step="0.5" value="${(Math.min(me.finance.transferBudget, value) / M).toFixed(1)}">m</label>
         <button class="btn primary" data-act="bid-submit" data-id="${p.id}">Make offer</button><button class="btn ghost" data-act="deal-close">Cancel</button>
-        <p class="small-note">Your budget: ${fmtMoney(me.finance.transferBudget)}. ${p.listed === 'transfer' ? 'He is transfer listed, so they should accept less than usual.' : 'Clubs usually want more than a player\'s value for anyone who plays regularly.'}${p.releaseClause ? ` A bid of ${fmtMoney(p.releaseClause)} meets his release clause.` : ''}</p></div>`
+        <p class="small-note">Budget ${fmtMoney(me.finance.transferBudget)}.${p.listed === 'transfer' ? ' Transfer listed.' : ''}${p.releaseClause ? ` Release clause ${fmtMoney(p.releaseClause)}.` : ''}</p></div>`
     : '';
   const loanForm = ctx.ui.deal === 'loan'
     ? `<div class="deal-form"><b>Loan offer</b> to the end of the season
@@ -502,7 +522,7 @@ export function squadContracts(ctx: Ctx): string {
   const out = loanedOut(g, c.id);
   const outRows = out.map((p) => `<tr><td class="n">-</td><td>${playerLink(p)}</td><td class="hide-xs">${esc(pos(p))}</td><td class="n">${p.age}</td><td class="n money">${fmtMoney(valueOf(g, p))}</td><td class="n">${fmtWage(p.wage)}</td><td class="n">${p.contractEnd}</td><td class="n hide-sm">-</td><td class="hide-xs">at ${clubLink(g, p.clubId!)}</td></tr>`).join('');
   return `<div class="scroll"><table class="grid squad"><thead><tr>${head}</tr></thead><tbody>${rows}${outRows ? `<tr class="sub-row"><td colspan="9">Out on loan</td></tr>${outRows}` : ''}</tbody></table></div>
-    <p class="pad small-note">Click a heading to sort; the default is contract end. Players whose deals end this summer leave on free transfers unless you renew them, and from February others may agree pre-contracts.</p>`;
+    <p class="pad small-note">Sorted by contract end. Deals ending in June: renew or he leaves on a free.</p>`;
 }
 
 
@@ -512,16 +532,16 @@ export function squadContracts(ctx: Ctx): string {
 function ledgerRows(cur: Ledger, prev?: Ledger): string {
   const row = (label: string, k: keyof Ledger, neg = false, cls = '') => `<tr class="${cls}"><td>${label}</td><td class="n">${fmtMoney(neg ? -(cur[k] ?? 0) : cur[k] ?? 0)}</td><td class="n hide-xs">${prev ? fmtMoney(neg ? -(prev[k] ?? 0) : prev[k] ?? 0) : '-'}</td></tr>`;
   const sum = (l: Ledger | undefined, f: (l: Ledger) => number) => (l ? fmtMoney(f(l)) : '-');
-  const cash = (l: Ledger) => ledgerRevenue(l) + l.sales - l.wages - l.purchases - l.operating - l.loanFeesOut - l.severance - (l.scouting ?? 0) - (l.stadium ?? 0);
+  const cash = (l: Ledger) => ledgerRevenue(l) + l.sales - l.wages - l.purchases - l.operating - l.loanFeesOut - l.severance - (l.scouting ?? 0) - (l.signing ?? 0) - (l.stadium ?? 0);
   return `<tbody>
     <tr class="sub-row"><td colspan="3">Income</td></tr>
     ${row('Gate receipts', 'gate')}${row('TV money', 'tv')}${row('Prize and merit money', 'prize')}${row('Sponsorship', 'sponsorship')}${row('Merchandise', 'merchandise')}${row('Loan fees received', 'loanFeesIn')}${row('Player sales', 'sales')}
     <tr class="sub-row"><td colspan="3">Spending</td></tr>
-    ${row('Wages', 'wages', true)}${row('Player purchases', 'purchases', true)}${row('Running costs', 'operating', true)}${row('Loan fees paid', 'loanFeesOut', true)}${row('Contract pay-offs', 'severance', true)}${row('Scouting', 'scouting', true)}${cur.stadium || prev?.stadium ? row('Stadium works and loan (outside the rules)', 'stadium', true) : ''}
+    ${row('Wages', 'wages', true)}${row('Player purchases', 'purchases', true)}${row('Running costs', 'operating', true)}${row('Loan fees paid', 'loanFeesOut', true)}${row('Contract pay-offs', 'severance', true)}${cur.signing || prev?.signing ? row('Signing-on and agents\' fees', 'signing', true) : ''}${row('Scouting', 'scouting', true)}${cur.stadium || prev?.stadium ? row('Stadium works and loan (outside the rules)', 'stadium', true) : ''}
     <tr class="total"><td>Cash flow</td><td class="n">${fmtMoney(cash(cur))}</td><td class="n hide-xs">${sum(prev, cash)}</td></tr>
     <tr class="sub-row"><td colspan="3">Profit and loss (what the spending rules measure)</td></tr>
     <tr><td>Revenue</td><td class="n">${fmtMoney(ledgerRevenue(cur))}</td><td class="n hide-xs">${sum(prev, ledgerRevenue)}</td></tr>
-    ${row('Wages', 'wages', true)}${row('Running costs', 'operating', true)}${row('Scouting', 'scouting', true)}${row('Transfer fees written off (amortisation)', 'amortisation', true)}${row('Profit on player sales', 'saleProfit')}
+    ${row('Wages', 'wages', true)}${row('Running costs', 'operating', true)}${cur.signing || prev?.signing ? row('Signing-on and agents\' fees', 'signing', true) : ''}${row('Scouting', 'scouting', true)}${row('Transfer fees written off (amortisation)', 'amortisation', true)}${row('Profit on player sales', 'saleProfit')}
     <tr class="total"><td>Profit / loss</td><td class="n">${fmtMoney(ledgerProfit(cur))}</td><td class="n hide-xs">${sum(prev, ledgerProfit)}</td></tr>
   </tbody>`;
 }
@@ -545,7 +565,7 @@ export function budgetPanel(ctx: Ctx, only?: 'scout'): string {
   if (only === 'scout') return `<div class="budgets compact">${scoutRow}</div>`;
   const cap = wageCap(g, c);
   return `<div class="sub-head">Budgets</div><div class="budgets">
-    <p class="small-note">All three come out of the ${fmtMoney(f.balance)} in the bank. The board raise the wage budget as the balance grows (sales, prize money), ${cap > f.wageBudget ? `up to what the ${c.leagueId === 'ENG' ? 'PSR rules' : 'squad cost rules'} allow: about ${fmtWage(niceWage(cap))} for you.` : `but you're already at the limit the ${c.leagueId === 'ENG' ? 'PSR rules' : 'squad cost rules'} allow, so it can't go higher for now.`} Moving money to wages costs a year of the weekly amount (${fmtWage(10e3)} = ${fmtMoney(10e3 * WAGE_WEEKS)} of transfer budget).</p>
+    <p class="small-note">Bank: ${fmtMoney(f.balance)}. Wage limit (${c.leagueId === 'ENG' ? 'PSR' : 'squad cost rules'}): ${fmtWage(niceWage(cap))}${cap > f.wageBudget ? '' : ' (reached)'}. ${fmtWage(10e3)} of wages = ${fmtMoney(10e3 * WAGE_WEEKS)} of transfer budget.</p>
     <div class="bud-row"><div class="bud-what"><b>Transfers</b> ${fmtMoney(f.transferBudget)}</div></div>
     <div class="bud-row"><div class="bud-what"><b>Wages</b> ${fmtWage(f.wageBudget)} · paying ${fmtWage(bill)}${f.wageShift ? ` <span class="small-note">(${f.wageShift > 0 ? '+' : '−'}${fmtWage(Math.abs(f.wageShift))} moved by you)</span>` : ''}</div>
       <div class="bud-move">${opts('bud-wage-amt', wageSteps, (v) => `${fmtWage(v)} (${fmtMoney(v * WAGE_WEEKS)})`)}<button class="btn small" data-act="bud-wage" data-dir="1" ${f.transferBudget <= 0 ? 'disabled' : ''}>Transfers → Wages</button><button class="btn small ghost" data-act="bud-wage" data-dir="-1" ${f.wageBudget <= bill ? 'disabled' : ''}>Wages → Transfers</button></div></div>
@@ -575,7 +595,7 @@ export function financesScreen(ctx: Ctx): string {
     <div class="fin-grid">
       <div><div class="sub-head">This season <span class="small-note">(so far)</span></div>
         <div class="scroll"><table class="grid compact ledger"><thead><tr><th></th><th class="n">${g.season}/${String((g.season + 1) % 100).padStart(2, '0')}</th><th class="n hide-xs">Last season</th></tr></thead>${ledgerRows(f.ledger, f.lastLedger)}</table></div>
-        <p class="pad small-note">Expected revenue this season: about ${fmtMoney(est)} (TV ${fmtMoney(f.tvShare)} plus merit money, gates at ${fmtMoney(f.ticketPrice)} a ticket, commercial ${fmtMoney(f.commercial)}). TV and commercial money arrive monthly; merit money at the end of the season. Figures are Touchline's estimates, in pounds.</p>
+        <p class="pad small-note">Expected revenue: ${fmtMoney(est)} (TV ${fmtMoney(f.tvShare)} + merit money, tickets ${fmtMoney(f.ticketPrice)}, commercial ${fmtMoney(f.commercial)}). TV and commercial paid monthly, merit money in May.</p>
       </div>
       <div>
         <div class="sub-head">Top earners</div><div class="scroll"><table class="grid compact"><thead><tr><th>Player</th><th class="n">Wage</th><th class="n">Until</th></tr></thead><tbody>${earners}</tbody></table></div>
@@ -589,6 +609,8 @@ export function financesScreen(ctx: Ctx): string {
 /* ───────────────────────── Actions ───────────────────────── */
 
 const num = (id: string) => Number((document.getElementById(id) as HTMLInputElement | null)?.value ?? NaN);
+/** A one-off fee from a form field in £m (blank or nonsense counts as none). */
+const fees = (id: string): number => { const v = num(id); return Number.isFinite(v) && v > 0 ? Math.round(v * M / 1000) * 1000 : 0; };
 
 function reply(ctx: Ctx, r: Offer | string): void {
   // Talks still open show their latest message inside the form instead.
@@ -682,7 +704,7 @@ export const marketActions: Record<string, Action> = {
     const years = num('deal-years');
     if (!(wage > 0)) return ctx.toast('Enter a weekly wage in thousands.');
     const clause = (document.getElementById('deal-clause') as HTMLSelectElement | null)?.value ?? defaultClause(userClub(ctx.game));
-    reply(ctx, proposeTerms(ctx.game, Number(el.dataset.id), wage, years, clause));
+    reply(ctx, proposeTerms(ctx.game, Number(el.dataset.id), wage, years, clause, fees('deal-signon'), fees('deal-agent')));
   },
   approach: (ctx, el) => reply(ctx, approachFreeAgent(ctx.game, Number(el.dataset.id))),
   precontract: (ctx, el) => reply(ctx, approachPreContract(ctx.game, Number(el.dataset.id))),
@@ -698,7 +720,8 @@ export const marketActions: Record<string, Action> = {
         lines: [
           `${nameOf(g, o.playerId)} joins you on a free transfer on 1 July, when his contract with ${club(g, o.sellerId).name} ends.`,
           `${fmtWage(o.wage)} for ${o.years} year${o.years === 1 ? '' : 's'}, release clause: ${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}.`,
-          'A pre-contract is binding: neither side can back out.',
+          ...(o.signOn || o.agentFee ? [`One-off fees on 1 July: ${fmtMoney((o.signOn ?? 0) + (o.agentFee ?? 0))}.`] : []),
+          'Binding: neither side can back out.',
         ],
         ok: 'Yes, sign it',
       };
@@ -708,9 +731,9 @@ export const marketActions: Record<string, Action> = {
       lines: [
         o.fee ? `Sign ${nameOf(g, o.playerId)} from ${club(g, o.sellerId).name} for ${fmtMoney(o.fee)}?` : `Sign ${nameOf(g, o.playerId)} on a free transfer?`,
         `${fmtWage(o.wage)} for ${o.years} year${o.years === 1 ? '' : 's'}, release clause: ${o.clauseFee ? fmtMoney(o.clauseFee) : 'none'}.`,
-        ...(o.fee ? [`Your transfer budget goes from ${fmtMoney(me.finance.transferBudget)} to ${fmtMoney(me.finance.transferBudget - o.fee)}.`] : []),
-        `Your wage bill goes from ${fmtWage(bill)} to ${fmtWage(bill + o.wage)} (budget ${fmtWage(me.finance.wageBudget)}).`,
-        ...(o.fee && !windowOpen(g) ? ['The window is shut, so he joins the day it opens.'] : []),
+        ...(o.fee || o.signOn || o.agentFee ? [`Transfer budget: ${fmtMoney(me.finance.transferBudget)} → ${fmtMoney(me.finance.transferBudget - o.fee - (o.signOn ?? 0) - (o.agentFee ?? 0))}${o.signOn || o.agentFee ? ` (incl. ${fmtMoney((o.signOn ?? 0) + (o.agentFee ?? 0))} fees)` : ''}.`] : []),
+        `Wage bill: ${fmtWage(bill)} → ${fmtWage(bill + o.wage)} (budget ${fmtWage(me.finance.wageBudget)}).`,
+        ...(o.fee && !windowOpen(g) ? ['Window shut: he joins the day it opens.'] : []),
       ],
       ok: 'Yes, sign him',
     };
@@ -740,13 +763,9 @@ export const marketActions: Record<string, Action> = {
   'renew-offer': (ctx, el) => {
     const id = Number(el.dataset.id);
     const clause = (document.getElementById('deal-clause') as HTMLSelectElement | null)?.value ?? 'keep';
-    const r = offerRenewal(ctx.game, id, Math.round(num('deal-wage') * 1000), num('deal-years'), clause);
+    const r = offerRenewal(ctx.game, id, Math.round(num('deal-wage') * 1000), num('deal-years'), clause, fees('deal-signon'), fees('deal-agent'));
     ctx.ui.dealMsg = r.message;
-    // Keep his terms on the form for the next try: the wage he asked for, the years and clause chosen.
-    const asked = r.message.match(/wants £([\d.,]+)(k|m)?/);
-    const wantK = asked ? Number(asked[1].replace(/,/g, '')) * (asked[2] === 'm' ? 1000 : asked[2] === 'k' ? 1 : 0.001) : num('deal-wage');
-    ctx.ui.renewDraft = r.ok ? null : { id, wage: Math.ceil(wantK * 10) / 10, years: num('deal-years'), clause };
-    if (r.ok) ctx.ui.deal = null;
+    if (r.ok || r.walked) ctx.ui.deal = null;
     ctx.save();
     ctx.render();
   },

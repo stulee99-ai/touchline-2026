@@ -130,7 +130,7 @@ function nextMatchCard(ctx: Ctx): string {
   const f = userNextFixture(g);
   if (!f) {
     // Nothing left for the manager's club, but the season isn't over (play-offs, cup finals elsewhere).
-    return `<div class="next"><div class="next-label">NO MATCH</div><div class="next-main">${esc(userClub(g).name)} have no games left this season.</div><p class="small-note">Other competitions are still being played. Continue to play them out.</p></div>`;
+    return `<div class="next"><div class="next-label">NO MATCH</div><div class="next-main">${esc(userClub(g).name)} have no games left this season.</div><p class="small-note">Other competitions are still being played.</p></div>`;
   }
   const home = f.homeId === g.userClubId;
   const opp = club(g, home ? f.awayId : f.homeId);
@@ -255,7 +255,7 @@ export function squad(ctx: Ctx): string {
   const extra = `<span class="strip-meta">${all.length - aca} players${aca ? ` + ${aca} academy` : ''} · avg age ${avgAge.toFixed(1)}${inj ? ` · ${inj} injured` : ''}${sus ? ` · ${sus} suspended` : ''}</span>`;
   const filters = segs([['all', 'All'], ['gk', 'Goalkeepers'], ['def', 'Defenders'], ['mid', 'Midfielders'], ['att', 'Attackers'], ['avail', 'Available']], filter, 'squad-filter', 'f');
   const views = segs([['overview', 'Overview'], ['form', 'Form'], ['contracts', 'Contracts & wages']], view, 'squad-view', 'v');
-  const formNote = view === 'form' ? '<p class="pad small-note form-key">This season, all competitions. <b>Last 5</b>: match ratings, newest on the right. <b>Trend</b>: recent form against his season average. <b>/90</b>: goals and assists per 90 minutes played. <b>CS</b>: clean sheets (keepers).</p>' : '';
+  const formNote = view === 'form' ? '<p class="pad small-note form-key">All competitions. <b>Last 5</b>: ratings, newest right. <b>Trend</b>: against his average. <b>/90</b>: per 90 minutes. <b>CS</b>: clean sheets.</p>' : '';
   if (view === 'contracts') return panel(c, 'Squad', `<div class="pad-top">${views}</div>${squadContracts(ctx)}`, extra);
   return panel(c, 'Squad', `<div class="pad-top">${views}${filters}</div>${formNote}<div class="scroll"><table class="grid squad${view === 'form' ? ' form-view' : ''}"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`, extra);
 }
@@ -330,7 +330,7 @@ function playerProfile(ctx: Ctx): string {
   const known = knowledge(g, p) >= 100;
   const words = scoutWords(g, p);
   const traitBlock = known && traitsOf(p).length
-    ? `<div class="traits"><h4>TRAITS <span class="small-note">Hover or tap one to see what it does</span></h4>${traitsOf(p).map((id) => `<span class="trait ${TRAIT_DEFS[id].good ? 'good' : 'bad'}" tabindex="0" role="note" data-tip="${esc(TRAIT_DEFS[id].blurb)}" aria-label="${esc(TRAIT_DEFS[id].label)}: ${esc(TRAIT_DEFS[id].blurb)}">${esc(TRAIT_DEFS[id].label)}</span>`).join('')}</div>`
+    ? `<div class="traits"><h4>TRAITS <span class="small-note">Tap for details</span></h4>${traitsOf(p).map((id) => `<span class="trait ${TRAIT_DEFS[id].good ? 'good' : 'bad'}" tabindex="0" role="note" data-tip="${esc(TRAIT_DEFS[id].blurb)}" aria-label="${esc(TRAIT_DEFS[id].label)}: ${esc(TRAIT_DEFS[id].blurb)}">${esc(TRAIT_DEFS[id].label)}</span>`).join('')}</div>`
     : '';
   const attrs = `<div class="attr-block"><h4>ATTRIBUTES</h4><div class="attr-cols">${col(keys.slice(0, per))}${col(keys.slice(per, per * 2))}${col(keys.slice(per * 2))}</div></div>`;
   const posMap = (['ST', 'AML', 'AMC', 'AMR', 'ML', 'MC', 'MR', 'DM', 'DL', 'DC', 'DR', 'GK'] as const).map((k) => {
@@ -823,7 +823,7 @@ export function fixtures(ctx: Ctx): string {
     body = `<div class="pad-top">${compTabs(ctx, cid)}</div>
       <div class="round-nav"><button class="btn small" data-act="round" data-r="${round - 1}" ${round <= 0 ? 'disabled' : ''}>◄ Prev</button><b>Matchday ${round + 1} · weekend of ${list[0] ? dateOf(g.season, list[0].weekend) : ''}</b><button class="btn small" data-act="round" data-r="${round + 1}" ${round >= last ? 'disabled' : ''}>Next ►</button></div>
       <div class="scroll"><table class="grid fixtures"><tbody>${list.map((f) => fixtureRow(g, f, undefined, tags.get(f.id))).join('')}</tbody></table></div>
-      <p class="pad small-note">Kick-off times are confirmed about five weeks ahead, when the TV picks are made. <span class="chip tv">TV</span> marks games moved for live coverage.</p>`;
+      <p class="pad small-note">Kick-offs confirmed about five weeks ahead. <span class="chip tv">TV</span> = moved for live coverage.</p>`;
   }
   return panel(userClub(g), 'Fixtures &amp; Results', `<div class="pad-top">${tabs}</div>${body}`);
 }
@@ -905,7 +905,7 @@ function ballonTab(ctx: Ctx): string {
   const clubOf = (id: number | null) => (id && g.clubs.find((c) => c.id === id) ? clubLink(g, id) : '');
   const ord = (i: number) => `${i + 1}`;
   let body = '';
-  if (!cur) body += `<p class="pad small-note">The 30 nominees for the ${g.season} Ballon d'Or are named on ${esc(dayLabel(g.season, shortlist))}, and the winner, the Kopa Trophy (best player aged 21 or under) and the Yashin Trophy (best goalkeeper) on ${esc(dayLabel(g.season, ceremony))}. It covers the season just ended and the summer's internationals.</p>`;
+  if (!cur) body += `<p class="pad small-note">Nominees: ${esc(dayLabel(g.season, shortlist))}. Ceremony, with the Kopa (21 and under) and Yashin (keepers) trophies: ${esc(dayLabel(g.season, ceremony))}.</p>`;
   if (shown) {
     const done = shown.done;
     const list = done ? shown.nominees : [...shown.nominees].sort((a, b) => a.name.localeCompare(b.name));
@@ -1032,7 +1032,7 @@ export function clubScreen(ctx: Ctx): string {
         <div><dt>Formation</dt><dd>${esc(c.tactics.formation)}</dd></div>
         <div><dt>How they play</dt><dd>${esc(STYLE_WORD(c.tactics))}</dd></div>
       </dl>
-      <p class="small-note">A club from outside the six leagues, here for the cups. ${players.length ? '' : 'Their squad will be known when they play.'}</p>
+      <p class="small-note">From outside the six leagues, here for the cups.${players.length ? '' : ' Squad known when they play.'}</p>
     </div>${clubCupsHtml(g, c.id)}`;
   } else if (!mine) {
     const avgAge = players.reduce((n, p) => n + p.age, 0) / players.length;
@@ -1090,7 +1090,7 @@ export function boardPanel(g: GameState): string {
   return `<div class="board-box"><h4>BOARD CONFIDENCE</h4>
     <div class="board-meter" role="img" aria-label="Board confidence ${b.confidence} out of 100"><i class="${cls}" style="width:${b.confidence}%"></i></div>
     <p><b>${esc(b.word)}</b> <span class="small-note">(${b.confidence}/100)</span></p>
-    <p class="small-note">They expect: ${esc(b.target)}. Results, league position and the club's finances all count.</p>${warn}</div>`;
+    <p class="small-note">They expect: ${esc(b.target)}.</p>${warn}</div>`;
 }
 
 /** After the sack: the clubs that will still have you. */
@@ -1105,7 +1105,7 @@ export function sackedScreen(ctx: Ctx): string {
   return `<section class="panel"><header class="strip" style="${clubStrip(old)}"><h2>${esc(old.name)} <small>– ${sk.clubName ? 'Your time here is over' : 'You have been sacked'}</small></h2></header>
     <p class="pad"><b>${esc(g.managerName)}, the ${esc(old.name)} board ${sk.clubName ? 'have released you' : 'have relieved you of your duties'}.</b> ${esc(sk.reason)}. Some clubs are still interested in you. Choose one to carry on your career.</p>
     <div class="scroll"><table class="grid"><thead><tr><th>Club</th><th>League</th><th>Reputation</th><th>Board expects</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="pad small-note">Your record stays with you; the new board starts with an open mind (moderate confidence) and a fresh squad to judge.</p>
+    <p class="pad small-note">Your record goes with you. The new board starts at moderate confidence.</p>
   </section>`;
 }
 
@@ -1206,7 +1206,7 @@ export function report(ctx: Ctx): string {
       ${statBar('Possession', s.possession, cols, true)}${statBar('Shots', s.shots, cols)}${statBar('On target', s.onTarget, cols)}${statBar('Corners', s.corners, cols)}${statBar('Fouls', s.fouls, cols)}${s.offsides && s.offsides[0] + s.offsides[1] > 0 ? statBar('Offsides', s.offsides, cols) : ''}
     </div>
     ${hasLineups ? `<div class="lineups"><table class="grid compact"><thead><tr><th>${esc(h.name)}</th><th class="n">Rat</th></tr></thead><tbody>${lineup(0)}</tbody></table>
-    <table class="grid compact"><thead><tr><th>${esc(a.name)}</th><th class="n">Rat</th></tr></thead><tbody>${lineup(1)}</tbody></table></div>` : '<p class="pad small-note">Team sheets and player ratings are kept for your own matches only.</p>'}
+    <table class="grid compact"><thead><tr><th>${esc(a.name)}</th><th class="n">Rat</th></tr></thead><tbody>${lineup(1)}</tbody></table></div>` : '<p class="pad small-note">Team sheets are kept for your matches only.</p>'}
     ${aroundTheLeague(g, f)}
     ${comm}`;
   return panel(userClub(g), 'Match Report', body, back);

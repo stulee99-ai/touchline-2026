@@ -85,13 +85,13 @@ function teamTab(ctx: Ctx): string {
       <div>
         <div class="sub-head">Match sharpness</div>
         <div class="prep-row"><span>Squad average</span>${meter(avg, 'Average sharpness')}<b>${Math.round(avg)}%</b></div>
-        <p class="pad small-note">${low ? `${low} player${low > 1 ? 's are' : ' is'} below 70%: ` : 'Everyone is above 70%. '}Sharper players play better, tire less and get hurt less. Games count for a lot, and a long injury takes it away again.</p>
+        <p class="pad small-note">${low ? `${low} player${low > 1 ? 's are' : ' is'} below 70%: ` : 'Everyone is above 70%. '}Sharper players play better, tire less and get hurt less.</p>
         <div class="sub-head">Tactical familiarity</div>
         ${famRows}
-        <p class="pad small-note">A side plays best in a shape it knows. A formation you haven't used starts at 60%.</p>
+        <p class="pad small-note">A new formation starts at 60%.</p>
         <div class="sub-head">Drills</div>
         ${drillRows}
-        <p class="pad small-note">50% is a normal side. Drills only help when your tactics use the instruction. Untrained drills fade back towards 50%.</p>
+        <p class="pad small-note">50% is normal. Drills help only instructions you use, and fade without work.</p>
       </div>
     </div>
     ${fx}`;
@@ -132,7 +132,7 @@ function playersTab(ctx: Ctx): string {
     { key: 'progress', label: 'Progress', cls: 'hide-sm', val: (p) => (p.train ? 0 : 1), html: (p) => `<span class="small-note">${esc(progNote(p))}</span>` },
   ];
   const { head, rows } = sortableTable(ctx, 'train-players', cols, squad, { key: 'prog', dir: 1 }, (a, b) => posOrder(a) - posOrder(b) || b.ca - a.ca);
-  return `<p class="pad small-note">Your coaches can give <b>${MAX_INDIVIDUAL}</b> players individual work at once (${n} of ${MAX_INDIVIDUAL} used). Pick an attribute to improve, or teach a player a new position: a full retraining takes a season or two, and younger, quicker-learning players get there sooner. Older players find physical attributes almost impossible to improve.</p>
+  return `<p class="pad small-note">Individual work: ${n} of <b>${MAX_INDIVIDUAL}</b> used. A new position takes a season or two (less for the young). Older players barely improve physically.</p>
     <div class="scroll"><table class="grid squad"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 

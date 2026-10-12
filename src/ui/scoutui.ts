@@ -72,7 +72,7 @@ export function playerScoutPanel(ctx: Ctx, p: Player): string {
     ? `<p class="small-note">${esc(g.scouting.scouts.find((s) => s.id === watching.scoutId)?.name ?? 'A scout')} is watching him; report due ${esc(dateOf(g.season, watching.endDay))}.</p>`
     : `<div class="deal-form"><label>Scout <select class="cm" id="scout-pick">${scoutOptions(g, 'player', p.id)}</select></label><button class="btn" data-act="scout-player" data-id="${p.id}">Send scout</button></div>`;
   return `<div class="scout-box"><div class="know"><span>What you know about him</span><span class="meter"><i style="width:${k}%" class="${k < 40 ? 'warn' : ''}"></i></span><b>${k}%</b></div>
-    ${r ? reportBlock(g, r) : '<p class="small-note">No scout report yet. Attributes are shown as ranges; send a scout to sharpen them and judge his potential.</p>'}
+    ${r ? reportBlock(g, r) : '<p class="small-note">No scout report yet.</p>'}
     ${action}
     <div class="row-btns"><button class="btn${listed ? ' on' : ''}" data-act="shortlist" data-id="${p.id}">${listed ? 'On your shortlist ✓' : 'Add to shortlist'}</button></div></div>`;
 }
@@ -105,14 +105,14 @@ function staffTab(ctx: Ctx): string {
     ? `<div class="assign-forms">
         <div class="deal-form"><b>Tour a league</b> <span class="small-note">About five weeks; reports on the players he rates most.</span>${scoutSel.replace('id="as-scout"', 'id="as-scout-l"')}${leagueSel}${focusSel}<button class="btn primary" data-act="scout-league">Send</button></div>
         <div class="deal-form"><b>Watch a club</b> <span class="small-note">About two weeks; sharper knowledge of their whole squad and reports on their best players.</span>${scoutSel.replace('id="as-scout"', 'id="as-scout-c"')}${clubSel}<button class="btn primary" data-act="scout-club">Send</button></div>
-        <p class="small-note">To watch one player, open his profile and send a scout from there, or scout your shortlist.</p></div>`
+        <p class="small-note">To watch one player, send a scout from his profile.</p></div>`
     : '<p class="pad small-note">All your scouts are out on assignments.</p>';
   return `<div class="money-strip"><span>Scouting budget left <b>${fmtMoney(me.finance.scoutBudget ?? 0)}</b></span><span>Transfer budget <b>${fmtMoney(me.finance.transferBudget)}</b></span><span>Scouts <b>${sc.scouts.length}</b>/${maxScouts(me)}</span><span>Staff wages <b>${fmtWage(sc.scouts.reduce((s, x) => s + x.wage, 0))}</b></span></div>
     ${budgetPanel(ctx, 'scout')}
     <div class="scroll"><table class="grid compact"><thead><tr><th>Scout</th><th class="n" title="Judging ability">Ability</th><th class="n" title="Judging potential">Potential</th><th>Knows best</th><th class="n">Wage</th><th>Now</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     ${confirm ? `<div class="confirm" style="margin:8px 10px">Let ${esc(confirm.name)} go? It costs a month's wages (${fmtMoney(confirm.wage * 4)}). <button class="btn danger" data-act="scout-fire" data-id="${confirm.id}">Let him go</button> <button class="btn" data-act="confirm-cancel">Keep him</button></div>` : ''}
     ${forms}
-    <p class="pad small-note">Judgement runs 1-20: a good judge of ability gets current ability right, a good judge of potential sees what youngsters will become. Scouts are quicker and sharper in the league they know best, and trips abroad take longer and cost more. Travel comes out of the scouting budget: the board set it each summer, and you can top it up from the transfer budget (or move what's left back). Wages come out of club funds.</p>`;
+    <p class="pad small-note">Judgement 1–20. Scouts are quicker and sharper in their own league; trips abroad cost more. Travel: scouting budget. Wages: club funds.</p>`;
 }
 
 function reportsTab(ctx: Ctx): string {
@@ -124,7 +124,7 @@ function reportsTab(ctx: Ctx): string {
     return `<tr><td>${playerLink(p)}</td><td class="n">${p.age}</td><td class="hide-xs">${esc(pos(p))}</td><td class="hide-sm">${p.clubId ? clubLink(g, p.clubId) : '<i>Free agent</i>'}</td><td>${starBar(r.estCA, 'Scout: ability')}</td><td>${starBar(r.estPA, 'Scout: potential')}</td><td class="n money">${fmtMoney(valueOf(g, p))}</td><td><span class="chip verdict-${r.verdict}">${r.verdict === 'sign' ? 'Sign' : r.verdict === 'consider' ? 'Consider' : r.verdict === 'future' ? 'Future' : r.verdict === 'squad' ? 'Squad' : 'No'}</span></td><td class="hide-sm small-note">${esc(r.scoutName)}</td></tr>`;
   }).join('');
   return rows
-    ? `<p class="pad small-note">Your scouts' latest reports, best recommendations first. Their star ratings are their judgement, not the truth.</p><div class="scroll"><table class="grid market"><thead><tr><th>Name</th><th class="n">Age</th><th class="hide-xs">Position</th><th class="hide-sm">Club</th><th>Ability</th><th>Potential</th><th class="n">Value</th><th>Verdict</th><th class="hide-sm">Scout</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<p class="pad small-note">Latest reports, best first. Stars are the scout's opinion.</p><div class="scroll"><table class="grid market"><thead><tr><th>Name</th><th class="n">Age</th><th class="hide-xs">Position</th><th class="hide-sm">Club</th><th>Ability</th><th>Potential</th><th class="n">Value</th><th>Verdict</th><th class="hide-sm">Scout</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="pad">No reports yet. Send a scout to watch a player, a club or a league.</p>';
 }
 
@@ -138,14 +138,14 @@ function shortlistTab(ctx: Ctx): string {
     return `<tr><td>${playerLink(p)}</td><td class="n">${p.age}</td><td class="hide-xs">${esc(pos(p))}</td><td class="hide-sm">${p.clubId ? clubLink(g, p.clubId) : '<i>Free agent</i>'}</td><td>${abilityStars(g, p)}</td><td class="n">${knowledge(g, p)}%</td><td class="n money">${fmtMoney(valueOf(g, p))}</td><td>${r ? `<span class="chip verdict-${r.verdict}">${r.verdict}</span>` : watching ? '<span class="chip">Being watched</span>' : free.length ? `<button class="btn tiny" data-act="scout-quick" data-id="${p.id}">Scout</button>` : ''}</td><td class="r"><button class="btn tiny" data-act="shortlist" data-id="${p.id}" title="Remove">×</button></td></tr>`;
   }).join('');
   return rows
-    ? `<p class="pad small-note">Players you're keeping an eye on. "Scout" sends your first free scout.</p><div class="scroll"><table class="grid market"><thead><tr><th>Name</th><th class="n">Age</th><th class="hide-xs">Position</th><th class="hide-sm">Club</th><th>Ability</th><th class="n">Known</th><th class="n">Value</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<p class="pad small-note">"Scout" sends your first free scout.</p><div class="scroll"><table class="grid market"><thead><tr><th>Name</th><th class="n">Age</th><th class="hide-xs">Position</th><th class="hide-sm">Club</th><th>Ability</th><th class="n">Known</th><th class="n">Value</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="pad">Your shortlist is empty. Add players from their profiles.</p>';
 }
 
 function hireTab(ctx: Ctx): string {
   const g = ctx.game;
   const rows = g.scouting.pool.map((s) => scoutRow(g, s, false)).join('');
-  return `<p class="pad small-note">Scouts looking for work. You can employ up to ${maxScouts(userClub(g))}. New candidates appear each summer.</p>
+  return `<p class="pad small-note">You can employ up to ${maxScouts(userClub(g))}. New candidates each summer.</p>
     <div class="scroll"><table class="grid compact"><thead><tr><th>Scout</th><th class="n">Ability</th><th class="n">Potential</th><th>Knows best</th><th class="n">Wage</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="pad">Nobody available.</td></tr>'}</tbody></table></div>`;
 }
 

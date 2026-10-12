@@ -15,7 +15,7 @@ export function storyHtml(g: GameState, n: NewsItem): string {
   const about = n.players?.map((x) => x.id) ?? [];
   const paras = n.body.split('\n\n').map((t) => `<p>${linkify(g, t, about)}</p>`).join('');
   const people = n.players?.length
-    ? `<div class="story-players"><h4>${n.kind === 'award' ? 'THE PLAYERS' : n.kind === 'headline' && /World Cup|Euro|Copa|Africa Cup|Gold Cup/.test(n.title) ? 'YOUR PLAYERS THERE' : 'NEWLY SCOUTED · READY FOR THE FIRST TEAM'}</h4><ul>${n.players.map(({ id, note }) => {
+    ? `<div class="story-players"><h4>${n.playersTitle ? esc(n.playersTitle.toUpperCase()) : n.kind === 'award' ? 'THE PLAYERS' : n.kind === 'headline' && /World Cup|Euro|Copa|Africa Cup|Gold Cup/.test(n.title) ? 'YOUR PLAYERS THERE' : 'NEWLY SCOUTED · READY FOR THE FIRST TEAM'}</h4><ul>${n.players.map(({ id, note }) => {
       const p = g.players[id];
       if (!p) return '';
       const traits = traitsOf(p).map((t) => `<span class="trait ${TRAIT_DEFS[t].good ? 'good' : 'bad'}" tabindex="0" role="note" data-tip="${esc(TRAIT_DEFS[t].blurb)}">${esc(TRAIT_DEFS[t].label)}</span>`).join('');

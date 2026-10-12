@@ -96,8 +96,8 @@ function body(w: Way, hasGame: boolean): { title: string; html: string; ok: stri
     return {
       title: 'Play full screen?',
       html: `<p>Full screen hides the address bar and your phone's status bar, so the game gets the whole screen. It works best with the phone turned sideways.</p>
-        <p class="small-note">Swipe in from the edge or press Back to leave full screen. Leaving or reloading the page ends it too, and the game will ask again next time.</p>
-        ${installEvent ? '<p class="small-note">Or install Touchline as an app: it opens full screen every time, and your career carries on in it.</p>' : ''}`,
+        <p class="small-note">Swipe in from the edge or press Back to leave.</p>
+        ${installEvent ? '<p class="small-note">Or install it as an app, which always opens full screen.</p>' : ''}`,
       ok: 'Go full screen',
     };
   }
@@ -110,7 +110,7 @@ function body(w: Way, hasGame: boolean): { title: string; html: string; ok: stri
           <li>Scroll down and tap <b>Add to Home Screen</b> ${ADD_ICON}. If there's an <b>Open as Web App</b> switch, leave it on.</li>
           <li>Tap <b>Add</b>, then open <b>Touchline</b> from your Home Screen.</li>
         </ol>
-        ${hasGame ? '<p class="small-note fs-warn">The Home Screen app keeps its own saves, so your career here doesn\'t move across by itself. Export a save file first (Club Info, Save file), then load it in the app.</p>' : '<p class="small-note">Start your career in the Home Screen app: saves made here in Safari stay in Safari.</p>'}`,
+        ${hasGame ? '<p class="small-note fs-warn">The Home Screen app has its own saves: export a save file first (Club Info, Save file) and load it there.</p>' : '<p class="small-note">Start your career in the Home Screen app: saves made here in Safari stay in Safari.</p>'}`,
       ok: null,
     };
   }

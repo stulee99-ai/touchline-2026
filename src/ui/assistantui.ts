@@ -103,7 +103,7 @@ export function debriefHtml(g: GameState, n: NewsItem): string {
     <div class="asst-sec">Player notes</div>
     <div class="scroll"><table class="asst-tbl"><thead><tr><th>Player</th><th>Rat</th><th>Key passes</th><th>Shots</th><th>Tackles</th></tr></thead><tbody>${players}</tbody></table></div>
     ${d.nextLabel !== 'Next' ? `<div class="asst-sec">Looking ahead</div><p class="asst-ahead"><b>${linkify(g, d.nextLabel)}</b>${d.next.length ? ` ${linkify(g, d.next.join(' '))}` : ''}</p>` : ''}
-    ${d.read < 10 ? '<p class="small-note asst-weak">A better reader of the game would tell you more. Your staff are in Club Info, under Staff.</p>' : ''}
+    ${d.read < 10 ? '<p class="small-note asst-weak">A better assistant would tell you more (Club Info, Staff).</p>' : ''}
     <div class="asst-foot"><button class="btn small" data-act="report" data-id="${f.id}">Match report ►</button></div>
   </section>`;
 }

@@ -140,7 +140,7 @@ export async function parseSaveFile(text: string): Promise<Parsed> {
 export function savePanel(hasGame: boolean): string {
   return `<div class="save-box">
     <h4>SAVE FILE</h4>
-    <p class="small-note">${hasGame ? 'Your career is kept in this browser as you play. A save file is a backup you can keep, move to another device or share.' : 'Carry on a career from a save file exported earlier, on this device or another.'}</p>
+    <p class="small-note">${hasGame ? 'Your career saves in this browser as you play. A save file is a backup.' : 'Load a career from a save file.'}</p>
     <div class="row-btns">${hasGame ? '<button class="btn" data-act="save-export">Export save file</button>' : ''}<button class="btn" data-act="save-pick">Load save file…</button></div>
     <input type="file" id="save-file" accept=".json,.txt,application/json,text/plain" hidden data-change="save-file" aria-label="Save file to load">
     <details class="save-paste"><summary>Copy or paste instead</summary>

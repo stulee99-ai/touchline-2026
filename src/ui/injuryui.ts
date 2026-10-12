@@ -33,7 +33,7 @@ export function surgeryPanel(g: GameState, p: Player | undefined): string {
   return `<div class="surgery">
     <div class="sub-head">Treatment for ${esc(p.lastName)}: ${esc(p.injury!.name.toLowerCase())}, about ${wk(p.injury!.days)} weeks</div>
     <table class="grid compact"><thead><tr><th>Option</th><th class="n">Cost</th><th class="n">Back in</th><th class="n" title="Chance of a complication">Risk</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="small-note">You decide once, and the outcome is known straight away. A complication adds about a third to the time out, and for the worst injuries can take a little pace for good.</p>
+    <p class="small-note">One choice, known at once. A complication adds about a third to the time out, and can cost some pace for good.</p>
   </div>`;
 }
 

@@ -335,10 +335,7 @@ test('release clauses: the manager is told about them, and can remove or change 
   const p = a2.playerIds.map((id) => g2.players[id]).sort((x, y) => y.ca - x.ca)[3];
   p.releaseClause = 60e6;
   a2.finance.wageBudget = 1e9;
-  const ask = (key: string) => {
-    const r = T.offerRenewal(g2, p.id, 1, 5, key);
-    return Number((r.message.match(/£([\d.]+)(k|m)/) ?? [])[1]) * ((r.message.match(/£[\d.]+(k|m)/) ?? [])[1] === 'm' ? 1e6 : 1e3);
-  };
+  const ask = (key: string) => T.renewalAsk(g2, p, 5, key);
   const none = ask('none');
   const low = ask('x1.5');
   assert.ok(none > low, `no clause costs more (${none} vs ${low})`);
@@ -423,9 +420,9 @@ test('contracts: a player tied up for years can be offered a new deal, and wants
   const same = T.offerRenewal(g, p.id, wage, 5, 'keep');
   assert.ok(!same.ok && /wants/.test(same.message), 'the same money is not enough');
   assert.ok(amount(same.message) > wage, `he asks for a rise (${amount(same.message)} vs ${wage})`);
-  const noClause = T.offerRenewal(g, p.id, 1, 5, 'none');
-  assert.ok(amount(noClause.message) > amount(same.message), 'removing the clause costs more');
-  const done = T.offerRenewal(g, p.id, amount(noClause.message), 5, 'none');
+  const noClause = T.renewalAsk(g, p, 5, 'none');
+  assert.ok(noClause > T.renewalAsk(g, p, 5, 'keep'), 'removing the clause costs more');
+  const done = T.offerRenewal(g, p.id, noClause, 5, 'none');
   assert.ok(done.ok, done.message);
   assert.equal(p.releaseClause, null);
   assert.ok(p.wage > wage);

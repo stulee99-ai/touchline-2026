@@ -147,7 +147,7 @@ function roundBlock(g: GameState, cup: Cup, r: number): string {
   const head = `<div class="sub-head">${esc(round.name)} <span class="small-note">${esc(when)}${where} · ${rule}</span></div>`;
   if (!ties.length) {
     const joining = round.entrants.length ? ` ${round.entrants.length} club${round.entrants.length > 1 ? 's' : ''} join at this stage.` : '';
-    return `${head}<p class="pad small-note">The draw is made when the previous round is complete.${joining}</p>`;
+    return `${head}<p class="pad small-note">Drawn when the previous round ends.${joining}</p>`;
   }
   return `${head}<div class="scroll"><table class="grid fixtures ties"><tbody>${tieRows(g, cup, ties)}</tbody></table></div>`;
 }
@@ -194,7 +194,7 @@ export function cupsScreen(ctx: Ctx): string {
     const view = ctx.ui.cupView ?? (cup.phaseDone ? 'ko' : 'phase');
     body = `<div class="pad-top">${segs([['phase', 'League phase'], ['ko', 'Knockouts']], view, 'cup-view', 'v')}</div>`;
     if (view === 'phase') body += euroPhase(ctx, cup);
-    else body += cup.phaseDone ? cup.rounds.map((_, r) => roundBlock(g, cup, r)).join('') : `<p class="pad small-note">The knockouts begin in February. The top eight go straight into the round of 16; 9th to 24th meet in the play-offs, the seeded side at home in the second leg.</p>`;
+    else body += cup.phaseDone ? cup.rounds.map((_, r) => roundBlock(g, cup, r)).join('') : `<p class="pad small-note">Knockouts from February: top eight to the round of 16; 9th to 24th in the play-offs.</p>`;
   } else {
     // Rounds still to be drawn go in one line; drawn rounds are listed newest first.
     const drawn = cup.rounds.map((_, r) => r).filter((r) => cup.ties.some((t) => t.round === r));

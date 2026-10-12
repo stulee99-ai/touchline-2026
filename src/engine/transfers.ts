@@ -5,12 +5,14 @@ import {
   clubWage, contractYears, fmtMoney, fmtWage, M, niceMoney, niceWage, playerValue, spendingRule, squadCost, wageBill,
   yearsLeft, expectedRevenue, SQUAD_COST_LIMIT, refreshWageBudget,
 } from './finance.js';
-import { addNews, club, dateOf, seasonOver, userClub } from './game.js';
-import { COUNTRY_NAMES, leagueCountry } from './levels.js';
+import { addNews, club, dateOf, dayLabel, seasonOver, userClub } from './game.js';
+import { leagueCountry } from './levels.js';
 import { assignSquadNumbers } from './generate.js';
 import { clamp, type Rng } from './rng.js';
 import { autoPickXI, available, getFormation, resolveLineup, slotRating } from './tactics.js';
-import type { Club, GameState, Offer, Player, Pos, TransferRecord } from './types.js';
+import type { Club, GameState, Offer, Player, Pos, Talks, TalkKind, TransferRecord } from './types.js';
+import { openTalks, respond, wageWanted } from './negotiation.js';
+import { bigMoveNews, topName, windowSummary } from './transfernews.js';
 
 /**
  * The transfer market: windows, bids and counter-bids, personal terms, release clauses,
@@ -217,7 +219,7 @@ export function signingBlocked(state: GameState, buyer: Club, fee: number, wage:
   if (fee > f.transferBudget) return `That's more than your transfer budget of ${fmtMoney(f.transferBudget)}.`;
   if (fee > Math.max(0, f.balance) + 20 * M) return 'The club can\'t raise that much cash.';
   if (squadCount(buyer, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players). Sell or release someone first.`;
-  if (wage && wageBill(state, buyer.id) + wage > f.wageBudget) return `His wages would take you over your wage budget of ${fmtWage(f.wageBudget)} (current bill ${fmtWage(wageBill(state, buyer.id))}).`;
+  if (wage && wageBill(state, buyer.id) + wage > f.wageBudget) return `Over your wage budget: ${fmtWage(wageBill(state, buyer.id))} of ${fmtWage(f.wageBudget)} used.`;
   if (buyer.leagueId === 'ESP' && wage) {
     const after = (squadCost(state, buyer) + wage * 52 + fee / 4) / Math.max(1, expectedRevenue(state, buyer));
     if (after > SQUAD_COST_LIMIT) return `La Liga wouldn't register him: squad costs would be ${Math.round(after * 100)}% of revenue (limit ${Math.round(SQUAD_COST_LIMIT * 100)}%).`;
@@ -228,6 +230,7 @@ export function signingBlocked(state: GameState, buyer: Club, fee: number, wage:
 /* ───────────────────────── Moving players ───────────────────────── */
 
 function recordMove(state: GameState, p: Player, fromId: number | null, toId: number | null, fee: number, kind: TransferRecord['kind']): void {
+  if (state.userClubId) bigMoveNews(state, p, fromId, toId, fee, kind, topName(state, p));
   state.transfers.push({ season: state.season, day: state.day, playerId: p.id, name: fullName(p), fromId, toId, fee, kind });
   // Anyone leaving the manager's club (a loan ending included) stays fully known.
   if (fromId !== null && fromId === state.userClubId) rememberFormer(state, p.id);
@@ -284,6 +287,7 @@ export function completeTransfer(state: GameState, p: Player, buyer: Club, fee: 
   p.preContract = null;
   p.joined = state.season;
   p.freeSince = undefined;
+  delete p.freeWage;
   p.morale = Math.min(100, p.morale + 10);
   // A new contract: the clause is whatever is usual where he's going (the manager's own signings
   // then take the clause agreed in the personal terms).
@@ -374,7 +378,7 @@ export function makeBid(state: GameState, playerId: number, fee: number): Offer 
   const offer = newOffer(state, { kind: 'transfer', playerId, buyerId: me.id, sellerId: seller.id, fee });
   if (p.releaseClause && fee >= p.releaseClause) {
     offer.status = 'accepted';
-    offer.note = `Your bid meets his ${fmtMoney(p.releaseClause)} release clause, so ${seller.name} must let him talk to you.`;
+    offer.note = `Release clause met (${fmtMoney(p.releaseClause)}). Agree personal terms.`;
     return offer;
   }
   if (!ambitionOk(state, p, me)) {
@@ -389,7 +393,7 @@ export function makeBid(state: GameState, playerId: number, fee: number): Offer 
     offer.note = `${seller.name} say ${p.lastName} is not for sale.`;
   } else if (fee >= ask) {
     offer.status = 'accepted';
-    offer.note = `${seller.name} have accepted your offer of ${fmtMoney(fee)}. Agree personal terms with ${p.lastName} to complete the deal.`;
+    offer.note = `${seller.name} accept ${fmtMoney(fee)}. Agree personal terms.`;
   } else if (fee >= ask * 0.72) {
     offer.status = 'countered';
     offer.counterFee = ask;
@@ -409,7 +413,7 @@ export function acceptCounter(state: GameState, offerId: number): Offer | string
   if (blocked) return blocked;
   o.fee = o.counterFee;
   o.status = 'accepted';
-  o.note = `${club(state, o.sellerId).name} accept ${fmtMoney(o.fee)}. Agree personal terms to complete the deal.`;
+  o.note = `${club(state, o.sellerId).name} accept ${fmtMoney(o.fee)}. Agree personal terms.`;
   return o;
 }
 
@@ -439,7 +443,7 @@ export function makeLoanBid(state: GameState, playerId: number, wageShare: numbe
     // An option to buy is a permanent move in waiting: he has to be willing to make it.
     offer.status = 'countered';
     offer.counterFee = undefined;
-    offer.note = `${p.lastName} would come on loan for the experience, but won't agree to an option to buy: he doesn't see his future at a club of your stature.`;
+    offer.note = `${p.lastName} will come on loan, but without an option to buy.`;
   } else if (optionFee !== null && optionFee < valueOf(state, p) * 1.1) {
     offer.status = 'countered';
     offer.counterFee = niceMoney(valueOf(state, p) * 1.2);
@@ -451,7 +455,7 @@ export function makeLoanBid(state: GameState, playerId: number, wageShare: numbe
     // Agreed, but not done: the manager gets a final say before the loan goes through.
     offer.status = 'accepted';
     offer.agreed = true;
-    offer.note = `${seller.name} agree to loan you ${p.lastName}${optionFee ? ` with an option to buy for ${fmtMoney(optionFee)}` : ''}${recall ? ', with a clause to recall him in the January window' : ''}. Confirm to complete the loan.`;
+    offer.note = `${seller.name} agree${optionFee ? `, option to buy ${fmtMoney(optionFee)}` : ''}${recall ? ', January recall clause' : ''}. Confirm to complete.`;
   }
   return offer;
 }
@@ -480,7 +484,7 @@ export function confirmLoan(state: GameState, offerId: number): Offer | string {
     addNews(state, { kind: 'transfer', title: `${fullName(p)} joins on loan`, body: `${fullName(p)} has joined ${me.name} on loan from ${seller.name} until the end of the season. You pay ${Math.round(share * 100)}% of his ${fmtWage(p.wage)} wage.${optionFee ? ` You can make the move permanent for ${fmtMoney(optionFee)}.` : ''}${recall ? ` ${seller.name} have kept the right to recall him in the January window.` : ''}` });
   } else {
     o.status = 'terms';
-    o.note = `The loan of ${p.lastName} is agreed. The move will go through when the window opens.`;
+    o.note = `Loan agreed. He joins when the window opens.`;
   }
   return o;
 }
@@ -499,36 +503,67 @@ export function acceptLoanCounter(state: GameState, offerId: number, withOption:
  * Personal terms: the manager offers a weekly wage and contract length. The player accepts,
  * says what he wants, or walks away after three rounds.
  */
-export function proposeTerms(state: GameState, offerId: number, wage: number, years: number, clause = 'auto'): Offer | string {
+/** The kind of talks an offer leads to. */
+function talkKind(o: Offer): TalkKind {
+  return o.kind === 'precontract' ? 'precontract' : o.sellerId ? 'transfer' : 'free';
+}
+
+/** The player's side of the talks for an offer that has reached personal terms (opened on first look). */
+export function talksFor(state: GameState, o: Offer): Talks {
+  if (!o.neg) {
+    const p = state.players[o.playerId];
+    o.neg = openTalks(state, p, talkKind(o), wageDemand(state, p, userClub(state)), preferredYears(p));
+  }
+  return o.neg;
+}
+
+/** What the clause and contract length are worth to him against what he wants (1 = as he likes). */
+function termsMult(p: Player, years: number, clauseMult: number): number {
+  return clauseMult * (1 + Math.abs(years - preferredYears(p)) * 0.04);
+}
+
+/** Pay the one-off fees of a signing: out of the transfer budget and the bank. */
+function payExtras(c: Club, money: number): void {
+  if (!money) return;
+  c.finance.balance -= money;
+  c.finance.transferBudget = Math.max(0, c.finance.transferBudget - money);
+  c.finance.ledger.signing = (c.finance.ledger.signing ?? 0) + money;
+}
+
+/**
+ * Personal terms: offer a weekly wage, a length, a release clause and one-off fees (signing-on and
+ * agent). He agrees, comes back with a counter-offer, or (his patience gone) walks away.
+ */
+export function proposeTerms(state: GameState, offerId: number, wage: number, years: number, clause = 'auto', signOn = 0, agentFee = 0): Offer | string {
   const o = state.offers.find((x) => x.id === offerId);
   if (!o || o.status !== 'accepted') return 'There is nothing to agree yet.';
   const p = state.players[o.playerId];
   const me = userClub(state);
   const cl = clauseWage(state, p, me, clause, o.fee);
-  // A player coming on a free knows there's no fee to pay, and asks for some of it in wages.
-  const demand = niceWage(wageDemand(state, p, me) * cl.mult * (o.kind === 'precontract' ? 1.1 : 1));
-  o.demand = { wage: demand, years: preferredYears(p) };
+  const t = talksFor(state, o);
   o.clause = clause;
   o.agreed = false;
   o.talks = (o.talks ?? 0) + 1;
-  const blocked = o.kind === 'precontract' ? preContractBlocked(state, me, wage) : signingBlocked(state, me, o.fee, wage);
+  const extras = signOn + agentFee;
+  const blocked = o.kind === 'precontract'
+    ? preContractBlocked(state, me, wage) ?? (extras > me.finance.transferBudget ? `The fees (${fmtMoney(extras)}) are more than your transfer budget of ${fmtMoney(me.finance.transferBudget)}.` : null)
+    : signingBlocked(state, me, o.fee + extras, wage);
   if (blocked) return blocked;
-  // Shorter or longer deals than he wants cost a little more.
-  const need = demand * (1 + Math.abs(years - preferredYears(p)) * 0.04);
-  if (wage >= need) {
+  const pkg = { wage, years, signOn, agentFee };
+  const mult = termsMult(p, years, cl.mult);
+  const r = respond(t, pkg, mult, p.lastName);
+  o.demand = { wage: r.wage, years };
+  o.note = r.note;
+  if (r.kind === 'agree') {
     o.wage = niceWage(wage);
     o.years = years;
     o.clauseFee = cl.fee;
-    // His yes isn't the signature: the manager gets a final say before the fee and wages are committed.
+    o.signOn = signOn;
+    o.agentFee = agentFee;
+    // His yes isn't the signature: the manager gets a final say before the money is committed.
     o.agreed = true;
-    o.note = o.kind === 'precontract'
-      ? `${p.lastName} has agreed terms: ${fmtWage(o.wage)} for ${years} year${years > 1 ? 's' : ''} from 1 July. Confirm to sign the pre-contract.`
-      : `${p.lastName} has agreed terms: ${fmtWage(o.wage)} for ${years} year${years > 1 ? 's' : ''}. Confirm to sign him.`;
-  } else if (o.talks >= 3 && wage < need * 0.9) {
+  } else if (r.kind === 'walk') {
     o.status = 'collapsed';
-    o.note = `${p.lastName} has walked away from talks. He wanted ${fmtWage(niceWage(need))}.`;
-  } else {
-    o.note = `${p.lastName} wants ${fmtWage(niceWage(need))} over ${years} year${years > 1 ? 's' : ''}${years !== preferredYears(p) ? ` (he'd prefer ${preferredYears(p)})` : ''}.`;
   }
   return o;
 }
@@ -538,6 +573,7 @@ function finishUserSigning(state: GameState, o: Offer): void {
   const me = userClub(state);
   const from = p.clubId ? club(state, p.clubId).name : null;
   completeTransfer(state, p, me, o.fee, o.wage!, o.years!);
+  payExtras(me, (o.signOn ?? 0) + (o.agentFee ?? 0));
   // The release clause agreed in the personal terms.
   if (o.clauseFee !== undefined) p.releaseClause = o.clauseFee;
   o.status = 'done';
@@ -568,13 +604,13 @@ export function confirmSigning(state: GameState, offerId: number): Offer | strin
     return o;
   }
   if (squadCount(me, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
-  const blocked = signingBlocked(state, me, o.fee, o.wage);
+  const blocked = signingBlocked(state, me, o.fee + (o.signOn ?? 0) + (o.agentFee ?? 0), o.wage);
   if (blocked) return blocked;
   if (!from || windowOpen(state)) {
     finishUserSigning(state, o);
   } else {
     o.status = 'terms';
-    o.note = `${p.lastName} has agreed terms. The transfer will go through when the window opens.`;
+    o.note = `Terms agreed. He joins when the window opens.`;
   }
   return o;
 }
@@ -595,7 +631,7 @@ export function approachFreeAgent(state: GameState, playerId: number): Offer | s
   if (squadCount(me, state.players) >= MAX_SQUAD) return `Your squad is full (${MAX_SQUAD} players).`;
   const existing = state.offers.find((o) => o.playerId === playerId && o.buyerId === me.id && o.status === 'accepted');
   if (existing) return existing;
-  return newOffer(state, { kind: 'transfer', playerId, buyerId: me.id, sellerId: 0, fee: 0, status: 'accepted', note: `${fullName(p)} is willing to talk. Offer him a contract.` });
+  return newOffer(state, { kind: 'transfer', playerId, buyerId: me.id, sellerId: 0, fee: 0, status: 'accepted', note: `${fullName(p)} will talk. Make an offer.` });
 }
 
 /* ───────────────────────── Pre-contracts ───────────────────────── */
@@ -650,12 +686,12 @@ export function preContractStatus(state: GameState, p: Player): PreContractStatu
   const from = leagueCountry(owner.leagueId);
   const domestic = from === leagueCountry(me.leagueId);
   if (preContractAllowed(state, owner.leagueId, me.leagueId)) {
-    return { open: true, why: `His contract with ${owner.name} ends in June and he hasn't agreed a new one, so he is free to agree to join you on a free transfer in the summer.` };
+    return { open: true, why: `His contract with ${owner.name} ends in June. He can agree to join you on a free.` };
   }
   if (domestic && !DOMESTIC_PRE_CONTRACT.has(from)) {
-    return { open: false, why: `His contract ends in June. English clubs may only talk to a player at another English club in the last month of his contract: here, once the season is over.` };
+    return { open: false, why: `Contract ends in June. Between English clubs, talks only in the final month (once the season ends).` };
   }
-  return { open: false, why: `His contract ends in June. From 1 January, his last six months, he can agree a pre-contract with ${domestic ? `a club in ${COUNTRY_NAMES[from] ?? from}` : 'a club abroad'}, yours included.` };
+  return { open: false, why: `Contract ends in June. Pre-contract talks from 1 January.` };
 }
 
 /** Next season's squad and wage bill at the manager's club, with the players who have agreed to join. */
@@ -680,7 +716,7 @@ function nextSeasonSquad(state: GameState, me: Club): { count: number; wages: nu
 export function preContractBlocked(state: GameState, me: Club, wage: number): string | null {
   const next = nextSeasonSquad(state, me);
   if (next.count >= MAX_SQUAD) return `Next season's squad would be over ${MAX_SQUAD}: you already have ${next.count} players for it.`;
-  if (wage && next.wages + wage > me.finance.wageBudget) return `His wages would take next season's bill (${fmtWage(next.wages)}, counting the players staying and those joining) over your wage budget of ${fmtWage(me.finance.wageBudget)}.`;
+  if (wage && next.wages + wage > me.finance.wageBudget) return `Next season's wage bill (${fmtWage(next.wages)}) would go over your budget of ${fmtWage(me.finance.wageBudget)}.`;
   return null;
 }
 
@@ -704,7 +740,7 @@ export function approachPreContract(state: GameState, playerId: number): Offer |
   if (!ambitionOk(state, p, me)) return `${p.lastName} isn't interested in joining a club of your stature.`;
   return newOffer(state, {
     kind: 'precontract', playerId, buyerId: me.id, sellerId: ownerId, fee: 0, status: 'accepted',
-    note: `${owner.name} have been told in writing that you want to talk to him, as the rules require. ${p.lastName} is willing to listen: offer him a contract that starts on 1 July.`,
+    note: `${owner.name} have been told. ${p.lastName} will listen: offer a contract from 1 July.`,
   });
 }
 
@@ -722,7 +758,7 @@ function signPreContract(state: GameState, o: Offer): Offer | string {
   if (blocked) return blocked;
   const owner = club(state, o.sellerId);
   p.preContract = me.id;
-  p.preTerms = { wage: niceWage(o.wage!), years: o.years!, clauseFee: o.clauseFee ?? null };
+  p.preTerms = { wage: niceWage(o.wage!), years: o.years!, clauseFee: o.clauseFee ?? null, signOn: o.signOn ?? 0, agentFee: o.agentFee ?? 0 };
   o.status = 'done';
   o.note = `${fullName(p)} has signed a pre-contract. He joins you on a free transfer on 1 July.`;
   addNews(state, {
@@ -763,32 +799,71 @@ export function setListed(state: GameState, playerId: number, listed: Player['li
   p.listed = listed;
 }
 
+/** What he'd settle around for a new contract with his own club (before the clause and length). */
+function renewalDemand(state: GameState, p: Player, me: Club): number {
+  const left = yearsLeft(p, state.season, state.day);
+  let demand = wageDemand(state, p, me) * (left < 1 ? 1.05 : 1);
+  // Mid-contract he holds the cards: he doesn't need a new deal, so he almost always wants a rise
+  // on what he already earns (unless he's paid far more than he's worth).
+  if (left >= 1 && p.wage < clubWage(p, me) * 1.6) demand = Math.max(demand, p.wage * (left >= 2 ? 1.12 : 1.08));
+  return niceWage(demand);
+}
+
+const today = (state: GameState): number => state.season * 365 + state.day;
+
+/** Renewal talks with one of your players (opened on first look; they lapse after a month). */
+export function renewalTalks(state: GameState, p: Player): Talks {
+  if (!p.talks || today(state) - p.talks.day > 30) {
+    const me = userClub(state);
+    p.talks = openTalks(state, p, 'renewal', renewalDemand(state, p, me), Math.max(preferredYears(p), Math.min(5, p.contractEnd - state.season)), yearsLeft(p, state.season, state.day) >= 1);
+  }
+  return p.talks;
+}
+
+/** The weekly wage he wants now for a new contract on these terms, with no one-off fees (asking commits nothing). */
+export function renewalAsk(state: GameState, p: Player, years: number, clause = 'keep'): number {
+  const me = userClub(state);
+  const t = renewalTalks(state, p);
+  return wageWanted(t, { wage: 0, years, signOn: 0, agentFee: 0 }, termsMult(p, years, clauseWage(state, p, me, clause).mult));
+}
+
+/** Why he won't talk about a new contract now, or null. */
+export function renewalBlocked(state: GameState, p: Player): string | null {
+  if (p.noTalksUntil !== undefined && today(state) < p.noTalksUntil) return `${p.lastName} walked out of talks and won't discuss a new contract until ${dayLabel(state.season, p.noTalksUntil - state.season * 365)}.`;
+  return null;
+}
+
 /** Offer one of your players a new contract. */
-export function offerRenewal(state: GameState, playerId: number, wage: number, years: number, clause = 'keep'): { ok: boolean; message: string } {
+export function offerRenewal(state: GameState, playerId: number, wage: number, years: number, clause = 'keep', signOn = 0, agentFee = 0): { ok: boolean; message: string; walked?: boolean } {
   const p = state.players[playerId];
   const me = userClub(state);
   if (!p || p.clubId !== me.id || p.loan) return { ok: false, message: 'You can only renew your own players\' contracts.' };
   if (p.preContract) return { ok: false, message: `${p.lastName} has already agreed to join ${club(state, p.preContract).name}.` };
+  const no = renewalBlocked(state, p);
+  if (no) return { ok: false, message: no };
   // A player tied up for years can be offered a new deal (a pay rise, a new clause), but he won't give up years he has.
-  if (contractEndFor(state, years) < p.contractEnd) return { ok: false, message: `${p.lastName} won't sign for less time than he has left: his contract runs to June ${p.contractEnd}.` };
+  if (contractEndFor(state, years) < p.contractEnd) return { ok: false, message: `${p.lastName} won't sign for less time than he has left (to June ${p.contractEnd}).` };
+  if (wageBill(state, me.id) - p.wage + wage > me.finance.wageBudget) return { ok: false, message: `Over your wage budget of ${fmtWage(me.finance.wageBudget)}.` };
+  if (signOn + agentFee > me.finance.transferBudget) return { ok: false, message: `The fees are more than your transfer budget of ${fmtMoney(me.finance.transferBudget)}.` };
   const cl = clauseWage(state, p, me, clause);
-  const left = yearsLeft(p, state.season, state.day);
-  let demand = niceWage(wageDemand(state, p, me) * cl.mult * (left < 1 ? 1.05 : 1) * (1 + Math.abs(years - preferredYears(p)) * 0.04));
-  // Mid-contract he holds the cards: he doesn't need a new deal, so he almost always wants a rise
-  // on what he already earns (unless he's paid far more than he's worth).
-  const midContract = left >= 1;
-  if (midContract && p.wage < clubWage(p, me) * 1.6) demand = Math.max(demand, niceWage(p.wage * cl.mult * (left >= 2 ? 1.12 : 1.08)));
-  if (wage < demand) {
-    const why = midContract ? ` He's under contract to June ${p.contractEnd}, so he'd want a rise to sign again.` : '';
-    return { ok: false, message: `${p.lastName} wants ${fmtWage(demand)} over ${years} year${years > 1 ? 's' : ''}${cl.changed ? (cl.fee ? ` with a ${fmtMoney(cl.fee)} release clause` : ' with no release clause') : ''}.${why}` };
+  const t = renewalTalks(state, p);
+  const r = respond(t, { wage, years, signOn, agentFee }, termsMult(p, years, cl.mult), p.lastName);
+  t.offer!.clause = clause;
+  if (r.kind === 'walk') {
+    delete p.talks;
+    p.noTalksUntil = today(state) + 30;
+    p.morale = Math.max(0, p.morale - 8);
+    return { ok: false, walked: true, message: `${r.note} He won't talk again for a month.` };
   }
-  if (wageBill(state, me.id) - p.wage + wage > me.finance.wageBudget) return { ok: false, message: `That would take you over your wage budget of ${fmtWage(me.finance.wageBudget)}.` };
+  if (r.kind === 'counter') return { ok: false, message: r.note };
+  delete p.talks;
+  payExtras(me, signOn + agentFee);
   p.wage = niceWage(wage);
   p.contractEnd = contractEndFor(state, years);
   p.morale = Math.min(100, p.morale + 12);
   if (cl.changed) p.releaseClause = cl.fee ?? null;
   else if (me.leagueId === 'ESP') p.releaseClause = niceMoney(Math.max(p.releaseClause ?? 0, valueOf(state, p) * 3));
-  addNews(state, { kind: 'transfer', title: `${fullName(p)} signs a new contract`, body: `${fullName(p)} has signed a new ${years}-year contract worth ${fmtWage(p.wage)}, running to June ${p.contractEnd}${p.releaseClause ? `, with a ${fmtMoney(p.releaseClause)} release clause` : ', with no release clause'}.` });
+  addNews(state, { kind: 'transfer', title: `${fullName(p)} signs a new contract`, body: `${fullName(p)}: ${fmtWage(p.wage)} to June ${p.contractEnd}${signOn ? `, ${fmtMoney(signOn)} signing-on fee` : ''}${p.releaseClause ? `, ${fmtMoney(p.releaseClause)} release clause` : ', no release clause'}.` });
   return { ok: true, message: `${p.lastName} has signed a new contract to June ${p.contractEnd}.` };
 }
 
@@ -859,7 +934,7 @@ export function respondToBid(state: GameState, offerId: number, answer: 'accept'
       const agree = settled(o.id, p.id, 113) < (p.age <= 21 ? 0.72 : 0.5) - (key ? 0.2 : 0);
       if (!agree) {
         o.recallRefused = true;
-        o.note = `${buyer.name} won't agree to a January recall clause: they want ${p.lastName} for the whole season. Accept without it, or turn them down.`;
+        o.note = `${buyer.name} refuse a recall clause. Accept without it, or turn them down.`;
         return o.note;
       }
       o.recall = true;
@@ -1197,15 +1272,16 @@ export function transferDay(state: GameState, rng: Rng): void {
       if (mine.length) addNews(state, { kind: 'transfer', title: 'Recall clauses', body: `You can recall ${mine.map((p) => `${fullName(p)} (at ${club(state, p.clubId!).name})`).join(', ')} from loan until the window shuts. Open a player's page to bring him back.` });
     }
     aiListings(state);
-    addNews(state, { kind: 'transfer', title: 'The transfer window is open', body: `The ${dateOf(state.season, state.day).getUTCMonth() <= 1 ? 'January' : 'summer'} window is open until ${dateOf(state.season, windowInfo(state).untilDay).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })}. Players in the last six months of their contracts can now agree to join other clubs next summer.`, link: { label: 'Transfers', screen: 'transfers' } });
+    addNews(state, { kind: 'transfer', title: 'The transfer window is open', body: `The ${dateOf(state.season, state.day).getUTCMonth() <= 1 ? 'January' : 'summer'} window is open until ${dateOf(state.season, windowInfo(state).untilDay).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })}.`, link: { label: 'Transfers', screen: 'transfers' } });
     contractWarnings(state);
   }
   if (!open && wasOpen) {
     closeWindow(state);
-    addNews(state, { kind: 'transfer', title: 'The transfer window has closed', body: 'No more permanent transfers or loans until the window opens again. Free agents can still be signed.' });
+    windowSummary(state, windowOpenOn);
   }
   // Squads in the first summer are already the real, finished ones, so the AI is quieter.
   if (open) marketDay(state, rng, state.day > 120 ? 0.4 : state.history.length === 0 ? 0.35 : state.day < 0 ? 0.35 : 1);
+  freeAgentMarket(state, rng);
   // Free agents: clubs short of numbers pick them up any time.
   if (rng.chance(0.3)) {
     for (const c of state.clubs) {
@@ -1220,6 +1296,48 @@ export function transferDay(state: GameState, rng: Rng): void {
   // Pre-contracts: from February, players in the last months of their deals may agree to move on.
   const d = dateOf(state.season, state.day);
   if (d.getUTCMonth() === 1 && d.getUTCDate() === 3) preContracts(state, rng);
+}
+
+/**
+ * Free agents look for a club, any time of year. At first each waits for a club at his level and his
+ * wage; every week without one he lowers both. Most good players have a club within a few weeks of
+ * the season starting. The biggest names hold out for a big club, into the autumn and now and then
+ * until January, before they too come down.
+ */
+function freeAgentMarket(state: GameState, rng: Rng): void {
+  const now = state.season * 365 + state.day;
+  const started = state.day >= 0; // 1 August: clubs fill their squads in earnest
+  const weekly = state.day % 7 === 0;
+  const clubs = state.clubs.filter((c) => c.id !== state.userClubId && !c.external);
+  for (const p of Object.values(state.players)) {
+    if (p.clubId !== null || p.age > 34 || p.ca < 80 || isExtPlayer(p)) continue;
+    const weeks = Math.max(0, (now - (p.freeSince ?? now)) / 7);
+    const star = p.ca >= 160 || topName(state, p);
+    // Asking less each week without a club (stars barely move until the autumn).
+    if (weekly && weeks >= 1) {
+      p.freeWage = (p.freeWage ?? p.wage) * (star && state.day < 75 ? 0.99 : 0.965);
+      p.wage = niceWage(p.freeWage);
+    }
+    const chance = started ? (star ? (state.day < 75 ? 0.025 : 0.06) : 0.09) : star ? 0.01 : 0.025;
+    if (!rng.chance(chance)) continue;
+    // How far he'll step down: the longer he waits, the further.
+    const drop = star ? Math.max(0, weeks - 6) * 1.2 : 6 + weeks * 2;
+    const minRep = star ? Math.max(5, 8.5 - Math.max(0, weeks - 8) * 0.15) : 0;
+    const fits = clubs.filter((c) => {
+      if (c.reputation < minRep || squadCount(c, state.players) >= 30) return false;
+      const level = clubLevel(state, c);
+      return p.ca >= level - 12 && p.ca <= level + 18 + drop;
+    });
+    if (!fits.length) continue;
+    // The biggest club that wants him (with a little luck in who calls first).
+    fits.sort((a, b) => b.reputation - a.reputation);
+    const c = fits[rng.int(0, Math.min(2, fits.length - 1))];
+    const wage = niceWage(Math.min(wageDemand(state, p, c), p.wage * (p.age >= 31 ? 1 : 1.05)));
+    const room = c.finance.wageBudget - wageBill(state, c.id);
+    // A club stretches its wage budget for a bargain, but only so far.
+    if (room < wage * 0.4) continue;
+    completeTransfer(state, p, c, 0, wage, p.age >= 32 ? 1 : p.age >= 29 ? rng.int(1, 3) : rng.int(2, 4));
+  }
 }
 
 /**
@@ -1301,6 +1419,7 @@ export function summerContracts(state: GameState, rng: Rng, userNews: string[]):
       if (terms) {
         // The release clause agreed in the pre-contract.
         p.releaseClause = terms.clauseFee;
+        if (to.id === me.id) payExtras(to, (terms.signOn ?? 0) + (terms.agentFee ?? 0));
         if (to.id === me.id) userNews.push(`${fullName(p)} has joined from ${c.name} on a free transfer, as agreed in his pre-contract.`);
       }
       delete p.preTerms;
