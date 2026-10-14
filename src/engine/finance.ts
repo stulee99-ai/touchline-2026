@@ -289,14 +289,13 @@ export function setBudgets(state: GameState, c: Club): void {
   const revenue = expectedRevenue(state, c);
   const recent = f.history.slice(-2).reduce((s, h) => s + h.profit, 0);
   let budget = Math.max(0, f.balance) * 0.45 + revenue * 0.08 + Math.min(0, recent) * 0.25;
-  if (c.leagueId === 'ENG') {
-    // Premier League PSR: keep well clear of the £105m three-year loss limit.
-    const room = 105 * M + recent;
-    if (room < 40 * M) budget *= 0.4;
-  }
+  // Over the Squad Cost Ratio's green line: the board hold back on transfers.
+  if (usesScr(c) && scrRatio(state, c) > SCR_GREEN) budget *= 0.4;
   f.transferBudget = niceMoney(clamp(budget, 0, Math.max(0, f.balance)));
   const bill = wageBill(state, c.id);
-  f.wageBase = niceWage(Math.max(bill * 1.04, (revenue * money(c.leagueId).wageRatio[1]) / 52 * 0.95));
+  // Last season's wage budget carries over (within the spending rule), so it doesn't fall back each summer.
+  const kept = Math.min(f.wageBudget ?? 0, wageCap(state, c));
+  f.wageBase = niceWage(Math.max(bill * 1.04, (revenue * money(c.leagueId).wageRatio[1]) / 52 * 0.95, kept));
   f.wageShift = 0;
   f.wageBudget = f.wageBase;
   if (c.id === state.userClubId) refreshWageBudget(state, c);
@@ -306,18 +305,13 @@ export function setBudgets(state: GameState, c: Club): void {
 export const WAGE_WEEKS = 52;
 
 /**
- * The most the club can pay in wages each week without breaking its league's spending rule:
- * PSR in the Premier League (allowing for the last two seasons' results and a £10m margin),
- * squad costs within 70% of revenue elsewhere.
+ * The most the board will budget for wages each week under its league's spending rule: the
+ * Squad Cost Ratio's green line (85%) in the Premier League, squad costs within 70% of revenue elsewhere.
  */
 export function wageCap(state: GameState, c: Club): number {
   const revenue = expectedRevenue(state, c);
   const amort = Math.max(0, squadCost(state, c) - wageBill(state, c.id) * 52);
-  if (c.leagueId === 'ENG') {
-    const room = PSR_LIMIT + c.finance.history.slice(-2).reduce((s, h) => s + h.profit, 0) - 10 * M;
-    const operating = revenue * (OPERATING_SHARE + 0.08) + 3 * M;
-    return Math.max(0, (revenue - operating - amort + room) / 52);
-  }
+  if (usesScr(c)) return scrWageAt(state, c, SCR_GREEN);
   return Math.max(0, (SQUAD_COST_LIMIT * revenue - amort) / 52);
 }
 
@@ -347,8 +341,11 @@ export function shiftTransferToWages(state: GameState, c: Club, weekly: number):
   if (weekly > 0) {
     const cost = weekly * WAGE_WEEKS;
     if (cost > f.transferBudget) return `That needs ${fmtMoney(cost)} of transfer budget; you have ${fmtMoney(f.transferBudget)}.`;
-    if (f.wageBudget + weekly > wageCap(state, c) && f.wageBudget + weekly > wageBill(state, c.id)) {
-      return `The board won't go above ${fmtWage(niceWage(Math.max(wageCap(state, c), f.wageBudget)))} a week: more would break the ${c.leagueId === 'ENG' ? 'PSR' : 'squad cost'} rules.`;
+    const limit = usesScr(c) ? scrWageAt(state, c, scrRed(c)) : wageCap(state, c);
+    if (f.wageBudget + weekly > limit && f.wageBudget + weekly > wageBill(state, c.id)) {
+      return usesScr(c)
+        ? `The board won't go above ${fmtWage(niceWage(Math.max(limit, f.wageBudget)))} a week: the Squad Cost Ratio's red line (points deductions).`
+        : `The board won't go above ${fmtWage(niceWage(Math.max(limit, f.wageBudget)))} a week: more would break the squad cost rules.`;
     }
     f.transferBudget -= cost;
   } else {
@@ -432,10 +429,98 @@ export interface RuleStatus {
   /** How far along the limit the club is, 0–1+. */
   used: number;
   ok: boolean;
+  /** Within the rules but in the warning zone (SCR: between the green and red lines). */
+  amber?: boolean;
   text: string;
 }
 
 export const PSR_LIMIT = 105 * M;
+
+/**
+ * Premier League Squad Cost Ratio (from 2026/27, replacing PSR): squad costs (wages, transfer fees
+ * spread over contracts, agents' fees) against football revenue plus profit on player sales.
+ * Up to 85% (the green line) is fine; above it a levy is due after the season; above the red line
+ * (85% plus the club's allowance, 30% to start) the club is docked points in the same season.
+ */
+export const SCR_GREEN = 0.85;
+export const SCR_ALLOWANCE = 0.3;
+/** Points for going over the red line: six, and one more for each £6.5m over. */
+export const SCR_POINTS_STEP = 6.5 * M;
+/** The levy for finishing a season between the lines (the real rate isn't published): half the overspend. */
+export const SCR_LEVY_RATE = 0.5;
+
+/**
+ * 1 March, the compliance test: a Premier League club over its red line is docked points at once
+ * (six, plus one for each £6.5m over). Returns the clubs docked, with the details.
+ */
+export function scrMarchTest(state: GameState): { club: Club; ratio: number; red: number; over: number; points: number }[] {
+  const out: { club: Club; ratio: number; red: number; over: number; points: number }[] = [];
+  for (const c of state.clubs) {
+    if (!usesScr(c)) continue;
+    const ratio = scrRatio(state, c);
+    const red = scrRed(c);
+    if (ratio <= red) continue;
+    const over = scrCosts(state, c) - red * scrRevenue(state, c);
+    const points = 6 + Math.floor(over / SCR_POINTS_STEP);
+    c.finance.deduction = (c.finance.deduction ?? 0) + points;
+    out.push({ club: c, ratio, red, over, points });
+  }
+  return out;
+}
+
+/**
+ * Season end, before the accounts close (the confirmation test, on the season's actual figures): a levy
+ * for finishing over the green line (from 2027/28), and
+ * next season's allowance (an overspend comes off it; a club within the green line earns 10% back).
+ */
+export function scrSeasonEnd(state: GameState, c: Club): { ratio: number; levy: number; allowance: number } | null {
+  if (!usesScr(c)) return null;
+  const f = c.finance;
+  // The confirmation test uses the season's actual accounts.
+  const l = f.ledger;
+  const costs = l.wages + l.amortisation + (l.signing ?? 0);
+  const revenue = Math.max(1, ledgerRevenue(l) + l.saleProfit);
+  const ratio = costs / revenue;
+  let levy = 0;
+  if (ratio > SCR_GREEN && state.season >= 2027) {
+    levy = niceMoney((costs - SCR_GREEN * revenue) * SCR_LEVY_RATE);
+    f.balance -= levy;
+    f.ledger.operating += levy;
+  }
+  const before = f.scrAllowance ?? SCR_ALLOWANCE;
+  f.scrAllowance = ratio > SCR_GREEN ? Math.max(0, before - (ratio - SCR_GREEN)) : Math.min(SCR_ALLOWANCE, before + 0.1);
+  return { ratio, levy, allowance: f.scrAllowance };
+}
+
+export function usesScr(c: Club): boolean {
+  return c.leagueId === 'ENG';
+}
+
+/** The club's red line: 85% plus its allowance (cut by past overspends, rebuilt 10% a season). */
+export function scrRed(c: Club): number {
+  return SCR_GREEN + (c.finance.scrAllowance ?? SCR_ALLOWANCE);
+}
+
+/** Football revenue for the ratio: the season's projection (at least 95% of last season's), plus profit on player sales. */
+export function scrRevenue(state: GameState, c: Club): number {
+  const last = c.finance.history[c.finance.history.length - 1]?.revenue ?? 0;
+  return Math.max(expectedRevenue(state, c), last * 0.95) + c.finance.ledger.saleProfit;
+}
+
+/** Squad costs for the ratio: a year of today's wage bill, fees written off this year, agents' and signing-on fees paid. */
+export function scrCosts(state: GameState, c: Club, extraWeekly = 0): number {
+  return squadCost(state, c) + extraWeekly * 52 + (c.finance.ledger.signing ?? 0);
+}
+
+export function scrRatio(state: GameState, c: Club): number {
+  return scrCosts(state, c) / Math.max(1, scrRevenue(state, c));
+}
+
+/** The weekly wage bill that would put the club exactly on a line (as a share of revenue). */
+export function scrWageAt(state: GameState, c: Club, line: number): number {
+  const other = scrCosts(state, c) - wageBill(state, c.id) * 52;
+  return Math.max(0, (line * scrRevenue(state, c) - other) / 52);
+}
 export const SQUAD_COST_LIMIT = 0.7;
 
 /** Annual squad cost: wages plus the amortisation of transfer fees (current run-rate). */
@@ -456,16 +541,16 @@ export function squadCost(state: GameState, c: Club): number {
  * - Elsewhere: UEFA's squad cost ratio, wages and amortisation at most 70% of revenue.
  */
 export function spendingRule(state: GameState, c: Club): RuleStatus {
-  const f = c.finance;
-  if (c.leagueId === 'ENG') {
-    const current = ledgerProfit(f.ledger);
-    const loss = -(f.history.slice(-2).reduce((s, h) => s + h.profit, 0) + current);
-    const used = Math.max(0, loss) / PSR_LIMIT;
+  if (usesScr(c)) {
+    const ratio = scrRatio(state, c);
+    const red = scrRed(c);
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
     return {
-      name: 'Profit and Sustainability (PSR)',
-      used,
-      ok: loss <= PSR_LIMIT,
-      text: loss > 0 ? `Losses over three seasons: ${fmtMoney(loss)} of the ${fmtMoney(PSR_LIMIT)} allowed.` : `In profit over three seasons (${fmtMoney(-loss)}).`,
+      name: 'Squad Cost Ratio (SCR)',
+      used: ratio / red,
+      ok: ratio <= red,
+      amber: ratio > SCR_GREEN && ratio <= red,
+      text: `Squad costs ${pct(ratio)} of revenue. Green line ${pct(SCR_GREEN)}, red line ${pct(red)}.`,
     };
   }
   const ratio = squadCost(state, c) / Math.max(1, expectedRevenue(state, c));

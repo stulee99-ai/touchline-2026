@@ -1,6 +1,6 @@
 import { shiftAbility } from './attributes.js';
 import {
-  closeSeasonAccounts, fmtMoney, fmtWage, meritPayment, monthlyAccounts, PSR_LIMIT, recordGate, setBudgets, spendingRule, M, refreshWageBudget,
+  closeSeasonAccounts, fmtMoney, fmtWage, meritPayment, monthlyAccounts, recordGate, scrMarchTest, scrSeasonEnd, SCR_GREEN, usesScr, setBudgets, spendingRule, refreshWageBudget,
 } from './finance.js';
 import { assignSquadNumbers, createPlayer, emptyStats, fillSquad, giveContract, rollPotential, scheduleSeason } from './generate.js';
 import { internationalDay, intlSummer, newIntlSeason } from './intl.js';
@@ -248,6 +248,16 @@ function monthlyDevelopment(state: GameState, rng: Rng): void {
 
 /* ───────────────────────── Days ───────────────────────── */
 
+/** 1 March: the Squad Cost Ratio compliance test, with points docked at once for clubs over the red line. */
+function scrCompliance(state: GameState): void {
+  const me = userClub(state);
+  for (const x of scrMarchTest(state)) {
+    const text = `${x.club.name}'s squad costs are ${Math.round(x.ratio * 100)}% of revenue, over the ${Math.round(x.red * 100)}% red line by ${fmtMoney(x.over)}: ${x.points} points deducted.`;
+    if (x.club.id === me.id) addNews(state, { kind: 'finance', title: `Squad Cost Ratio breach: ${x.points}-point deduction`, body: text });
+    else if (x.club.leagueId === me.leagueId) addNews(state, { kind: 'finance', title: `${x.club.name} docked ${x.points} points`, body: text });
+  }
+}
+
 /**
  * Move the calendar on to `day`: players recover, injuries heal, morale settles,
  * and at each new month the coaches report on development.
@@ -288,6 +298,8 @@ function advanceTo(state: GameState, day: number, rng: Rng): void {
     scoutingDay(state, rng);
     internationalDay(state, rng);
     ballonDay(state);
+    const md = dateOf(state.season, d);
+    if (md.getUTCMonth() === 2 && md.getUTCDate() === 1) scrCompliance(state);
   }
   state.day = day;
   if (oldMonth !== newMonth) monthlyDevelopment(state, rng);
@@ -791,15 +803,12 @@ export function startNewSeason(state: GameState): void {
   for (const cl of state.clubs) {
     const f = cl.finance;
     const rule = spendingRule(state, cl);
+    const end = scrSeasonEnd(state, cl);
     const profit = closeSeasonAccounts(state, cl);
     f.deduction = 0;
-    if (cl.leagueId === 'ENG') {
-      const loss = -f.history.slice(-3).reduce((sum, h) => sum + h.profit, 0);
-      if (loss > PSR_LIMIT) {
-        f.deduction = Math.min(10, 6 + Math.floor((loss - PSR_LIMIT) / (15 * M)));
-        const text = `${cl.name} lost ${fmtMoney(loss)} over three seasons, more than the ${fmtMoney(PSR_LIMIT)} PSR allows, and start next season on minus ${f.deduction} points.`;
-        if (cl.id === me.id) addNews(state, { kind: 'finance', title: `PSR breach: ${f.deduction}-point deduction`, body: text });
-        else if (cl.leagueId === me.leagueId) addNews(state, { kind: 'finance', title: `${cl.name} docked ${f.deduction} points`, body: text });
+    if (usesScr(cl)) {
+      if (end && cl.id === me.id && end.ratio > SCR_GREEN) {
+        addNews(state, { kind: 'finance', title: `Squad Cost Ratio: ${Math.round(end.ratio * 100)}% last season`, body: `Over the 85% green line.${end.levy ? ` Levy: ${fmtMoney(end.levy)}.` : ' No levy this season (levies start in 2027/28).'} Allowance above the line next season: ${Math.round(end.allowance * 100)}%.` });
       }
     } else if (cl.id === me.id && !rule.ok) {
       addNews(state, { kind: 'finance', title: `${rule.name}: over the limit`, body: `${rule.text} The board have cut the transfer budget until costs come down.` });

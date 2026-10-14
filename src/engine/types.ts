@@ -232,6 +232,8 @@ export interface Finance {
   history: { season: number; profit: number; revenue: number }[];
   /** Points deducted this season for breaking spending rules. */
   deduction: number;
+  /** Premier League Squad Cost Ratio: the allowance above the 85% green line (30% to start). */
+  scrAllowance?: number;
   /** Parachute payments after relegation from the Premier League: the seasons left (1-3). */
   parachute?: number;
   /** Travel budget for scouting assignments this season. */

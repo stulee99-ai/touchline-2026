@@ -130,3 +130,42 @@ test('free agents: good players find clubs once the season starts; stars hold ou
   assert.ok(club.reputation >= 7, `a big club (${club.name}, ${club.reputation})`);
   assert.ok(star.wage <= wage, 'on no more than he earned');
 });
+
+test('Squad Cost Ratio: the board budget to the green line, the manager can go to the red line, not past it', async () => {
+  const F = await import('../src/engine/finance.js');
+  const g = newGame(9);
+  takeCharge(g, g.clubs.find((c) => c.short === 'ARS')!.id, 'Test');
+  const me = g.clubs[g.userClubId - 1];
+  const rule = F.spendingRule(g, me);
+  assert.equal(rule.name, 'Squad Cost Ratio (SCR)');
+  assert.ok(rule.ok && !rule.amber, rule.text);
+  me.finance.transferBudget = 2e9;
+  const green = F.scrWageAt(g, me, F.SCR_GREEN);
+  const red = F.scrWageAt(g, me, F.scrRed(me));
+  assert.ok(red > green && Math.abs(F.wageCap(g, me) - green) < 1);
+  // Up to the red line is allowed (a levy is due above green); past it, no.
+  assert.equal(F.shiftTransferToWages(g, me, Math.round((red - me.finance.wageBudget) * 0.98)), null);
+  assert.match(F.shiftTransferToWages(g, me, 500_000) ?? '', /red line/);
+});
+
+test('Squad Cost Ratio: finishing over the green line costs a levy and allowance; the wage budget carries over', async () => {
+  const F = await import('../src/engine/finance.js');
+  const { playDay, seasonOver, startNewSeason } = await import('../src/engine/game.js');
+  const g = newGame(10);
+  takeCharge(g, g.clubs.find((c) => c.short === 'ARS')!.id, 'Test');
+  const me = g.clubs[g.userClubId - 1];
+  g.season = 2027; // levies start in 2027/28
+  const rival = g.clubs.find((c) => c.name === 'Chelsea')!;
+  while (g.day < 0) playDay(g);
+  const target = F.scrWageAt(g, rival, 1.0); // about 100%: between the lines
+  const bill = F.wageBill(g, rival.id);
+  for (const id of rival.playerIds) g.players[id].wage *= target / bill;
+  while (!seasonOver(g)) playDay(g);
+  const budget = me.finance.wageBudget;
+  const cash = rival.finance.balance;
+  startNewSeason(g);
+  assert.ok(rival.finance.balance < cash - 1e6 || rival.finance.history.at(-1)!.profit < 0, 'a levy was paid');
+  assert.ok((rival.finance.scrAllowance ?? 0.3) < 0.27, `allowance cut (${rival.finance.scrAllowance})`);
+  assert.equal(me.finance.scrAllowance ?? 0.3, 0.3);
+  assert.ok(me.finance.wageBudget >= Math.min(budget, F.wageCap(g, me)) - 5000, `the budget carries over (${budget} -> ${me.finance.wageBudget})`);
+});

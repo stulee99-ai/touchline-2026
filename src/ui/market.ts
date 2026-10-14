@@ -1,7 +1,7 @@
 import { isExtPlayer } from '../engine/ext.js';
 import {
   expectedRevenue, fmtMoney, fmtWage, ledgerProfit, ledgerRevenue, loanedOut, M, niceWage, shiftTransferToScouting, shiftTransferToWages,
-  spendingRule, WAGE_WEEKS, wageBill, wageCap, yearsLeft,
+  spendingRule, WAGE_WEEKS, wageBill, wageCap, yearsLeft, usesScr, scrWageAt, scrRed,
 } from '../engine/finance.js';
 import { club, userClub } from '../engine/game.js';
 import {
@@ -539,7 +539,7 @@ function ledgerRows(cur: Ledger, prev?: Ledger): string {
     <tr class="sub-row"><td colspan="3">Spending</td></tr>
     ${row('Wages', 'wages', true)}${row('Player purchases', 'purchases', true)}${row('Running costs', 'operating', true)}${row('Loan fees paid', 'loanFeesOut', true)}${row('Contract pay-offs', 'severance', true)}${cur.signing || prev?.signing ? row('Signing-on and agents\' fees', 'signing', true) : ''}${row('Scouting', 'scouting', true)}${cur.stadium || prev?.stadium ? row('Stadium works and loan (outside the rules)', 'stadium', true) : ''}
     <tr class="total"><td>Cash flow</td><td class="n">${fmtMoney(cash(cur))}</td><td class="n hide-xs">${sum(prev, cash)}</td></tr>
-    <tr class="sub-row"><td colspan="3">Profit and loss (what the spending rules measure)</td></tr>
+    <tr class="sub-row"><td colspan="3">Profit and loss</td></tr>
     <tr><td>Revenue</td><td class="n">${fmtMoney(ledgerRevenue(cur))}</td><td class="n hide-xs">${sum(prev, ledgerRevenue)}</td></tr>
     ${row('Wages', 'wages', true)}${row('Running costs', 'operating', true)}${cur.signing || prev?.signing ? row('Signing-on and agents\' fees', 'signing', true) : ''}${row('Scouting', 'scouting', true)}${row('Transfer fees written off (amortisation)', 'amortisation', true)}${row('Profit on player sales', 'saleProfit')}
     <tr class="total"><td>Profit / loss</td><td class="n">${fmtMoney(ledgerProfit(cur))}</td><td class="n hide-xs">${sum(prev, ledgerProfit)}</td></tr>
@@ -565,7 +565,7 @@ export function budgetPanel(ctx: Ctx, only?: 'scout'): string {
   if (only === 'scout') return `<div class="budgets compact">${scoutRow}</div>`;
   const cap = wageCap(g, c);
   return `<div class="sub-head">Budgets</div><div class="budgets">
-    <p class="small-note">Bank: ${fmtMoney(f.balance)}. Wage limit (${c.leagueId === 'ENG' ? 'PSR' : 'squad cost rules'}): ${fmtWage(niceWage(cap))}${cap > f.wageBudget ? '' : ' (reached)'}. ${fmtWage(10e3)} of wages = ${fmtMoney(10e3 * WAGE_WEEKS)} of transfer budget.</p>
+    <p class="small-note">Bank: ${fmtMoney(f.balance)}. ${usesScr(c) ? `Squad Cost Ratio: green line ${fmtWage(niceWage(cap))} (85%), red line ${fmtWage(niceWage(scrWageAt(g, c, scrRed(c))))} (${Math.round(scrRed(c) * 100)}%). Above green: a levy. Above red: points.` : `Wage limit (squad cost rules): ${fmtWage(niceWage(cap))}${cap > f.wageBudget ? '' : ' (reached)'}.`} ${fmtWage(10e3)} of wages = ${fmtMoney(10e3 * WAGE_WEEKS)} of transfer budget.</p>
     <div class="bud-row"><div class="bud-what"><b>Transfers</b> ${fmtMoney(f.transferBudget)}</div></div>
     <div class="bud-row"><div class="bud-what"><b>Wages</b> ${fmtWage(f.wageBudget)} · paying ${fmtWage(bill)}${f.wageShift ? ` <span class="small-note">(${f.wageShift > 0 ? '+' : '−'}${fmtWage(Math.abs(f.wageShift))} moved by you)</span>` : ''}</div>
       <div class="bud-move">${opts('bud-wage-amt', wageSteps, (v) => `${fmtWage(v)} (${fmtMoney(v * WAGE_WEEKS)})`)}<button class="btn small" data-act="bud-wage" data-dir="1" ${f.transferBudget <= 0 ? 'disabled' : ''}>Transfers → Wages</button><button class="btn small ghost" data-act="bud-wage" data-dir="-1" ${f.wageBudget <= bill ? 'disabled' : ''}>Wages → Transfers</button></div></div>
@@ -584,7 +584,7 @@ export function financesScreen(ctx: Ctx): string {
     <div class="fin-card"><span>Bank balance</span><b class="${f.balance < 0 ? 'neg' : ''}">${fmtMoney(f.balance)}</b></div>
     <div class="fin-card"><span>Transfer budget</span><b>${fmtMoney(f.transferBudget)}</b><small>80% of sale fees are added back</small></div>
     <div class="fin-card"><span>Wage bill</span><b>${fmtWage(bill)}</b>${bar(bill / f.wageBudget, bill > f.wageBudget)}<small>Budget ${fmtWage(f.wageBudget)} · ${fmtMoney(bill * 52)} a year</small></div>
-    <div class="fin-card"><span>${esc(rule.name)}</span><b class="${rule.ok ? '' : 'neg'}">${rule.ok ? 'Within the rules' : 'Over the limit'}</b>${bar(rule.used, !rule.ok)}<small>${esc(rule.text)}</small></div>
+    <div class="fin-card"><span>${esc(rule.name)}</span><b class="${rule.ok ? '' : 'neg'}">${!rule.ok ? 'Over the red line' : rule.amber ? 'Over the green line' : 'Within the rules'}</b>${bar(rule.used, !rule.ok)}<small>${esc(rule.text)}</small></div>
   </div>`;
   const top = c.playerIds.map((id) => g.players[id]).sort((a, b) => b.wage - a.wage).slice(0, 10);
   const earners = top.map((p) => `<tr><td>${playerLink(p)}</td><td class="n">${fmtWage(p.wage)}</td><td class="n">${p.loan ? 'loan' : p.contractEnd}</td></tr>`).join('');
@@ -600,7 +600,7 @@ export function financesScreen(ctx: Ctx): string {
       <div>
         <div class="sub-head">Top earners</div><div class="scroll"><table class="grid compact"><thead><tr><th>Player</th><th class="n">Wage</th><th class="n">Until</th></tr></thead><tbody>${earners}</tbody></table></div>
         <div class="sub-head">Recent seasons</div><div class="scroll"><table class="grid compact"><thead><tr><th>Season</th><th class="n">Revenue</th><th class="n">Profit</th></tr></thead><tbody>${hist}</tbody></table></div>
-        ${f.deduction ? `<p class="pad neg"><b>${f.deduction}-point deduction</b> this season for breaking PSR.</p>` : ''}
+        ${f.deduction ? `<p class="pad neg"><b>${f.deduction}-point deduction</b> this season for breaking the spending rules.</p>` : ''}
       </div>
     </div>`;
   return panel(c, 'Finances', body, `<span class="strip-meta">${compLink(g, c.leagueId)}</span>`);

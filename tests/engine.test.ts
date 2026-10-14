@@ -13,7 +13,7 @@ import { MatchSim } from '../src/engine/match.js';
 import { Rng } from '../src/engine/rng.js';
 import { autoPickXI, BENCH_SIZE, FORMATIONS, getFormation, pickBench, resolveBench } from '../src/engine/tactics.js';
 import { resultTags, roundSummary } from '../src/engine/roundup.js';
-import { fmtMoney, ledgerRevenue, PSR_LIMIT, wageBill, expectedRevenue } from '../src/engine/finance.js';
+import { fmtMoney, ledgerRevenue, wageBill, expectedRevenue } from '../src/engine/finance.js';
 import {
   acceptCounter, askingPrice, confirmLoan, confirmSigning, makeBid, makeLoanBid, offerRenewal, proposeTerms, respondToBid, counterAccepted, valueOf, wageDemand, windowOpenOn,
 } from '../src/engine/transfers.js';
@@ -594,18 +594,21 @@ test('season rollover: accounts close, contracts end, budgets are set', () => {
   for (const c of g.clubs) assert.ok(Number.isFinite(c.finance.balance), c.name);
 });
 
-test('spending rules: a Premier League club over the PSR limit is docked points', () => {
+test('spending rules: a Premier League club over the Squad Cost Ratio red line on 1 March is docked points', async () => {
+  const { scrRatio, scrRed } = await import('../src/engine/finance.js');
   const g = newGame(48);
   takeCharge(g, 1, 'Test');
   const c = clubNamed(g, 'Chelsea');
-  c.finance.history = [{ season: g.season - 2, profit: -80e6, revenue: 4e8 }, { season: g.season - 1, profit: -80e6, revenue: 4e8 }];
-  while (!seasonOver(g)) playDay(g);
-  c.finance.ledger.operating += 200e6;
-  startNewSeason(g);
+  while (g.day < 200) playDay(g);
+  // Chelsea's wages balloon: eight players on eight times their pay.
+  for (const id of c.playerIds.slice(0, 8)) g.players[id].wage *= 8;
+  assert.ok(scrRatio(g, c) > scrRed(c), `ratio ${scrRatio(g, c).toFixed(2)}`);
+  while (g.day < 214) playDay(g);
   assert.ok(c.finance.deduction >= 6, `deduction ${c.finance.deduction}`);
+  assert.ok(g.news.some((n) => n.title === `Chelsea docked ${c.finance.deduction} points`), 'the league hears about it');
   const row = table2(g, 'ENG').find((r) => r.clubId === c.id)!;
-  assert.equal(row.pts, -c.finance.deduction, 'starts the season below zero');
-  assert.ok(PSR_LIMIT === 105e6);
+  assert.equal(row.ded, c.finance.deduction, 'the points come off this season');
+  assert.equal(row.pts, row.w * 3 + row.d - c.finance.deduction);
 });
 
 /* ───────────── Phase 3: scouting ───────────── */

@@ -75,7 +75,7 @@ export function boardMonthly(state: GameState): void {
   if (b.confidence > 75) b.confidence -= (b.confidence - 75) * 0.15; // the honeymoon fades
   const rule = spendingRule(state, me);
   if (!rule.ok) b.confidence = clamp(b.confidence - 5, 0, 100);
-  else if (rule.used > 0.85) b.confidence = clamp(b.confidence - 1.5, 0, 100);
+  else if (rule.amber ?? rule.used > 0.85) b.confidence = clamp(b.confidence - 1.5, 0, 100);
   if (b.confidence > 60 && b.warnings > 0) b.warnings--; // trust rebuilt
   review(state, false);
 }
