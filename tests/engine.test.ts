@@ -446,7 +446,8 @@ test('money: values, wages and contracts are sensible', () => {
   for (const c of g.clubs) {
     const ratio = (wageBill(g, c.id) * 52) / expectedRevenue(g, c);
     assert.ok(ratio > 0.2 && ratio < 1.1, `${c.name} wages ${Math.round(ratio * 100)}% of revenue`);
-    assert.ok(c.finance.transferBudget >= 0 && c.finance.transferBudget <= c.finance.balance);
+    // AI clubs may spend beyond their cash (owners, borrowing): up to a quarter of revenue more.
+    assert.ok(c.finance.transferBudget >= 0 && c.finance.transferBudget <= Math.max(0, c.finance.balance) + expectedRevenue(g, c) * 0.25 + 1e6);
     assert.ok(c.finance.wageBudget >= wageBill(g, c.id));
   }
 });
@@ -600,8 +601,8 @@ test('spending rules: a Premier League club over the Squad Cost Ratio red line o
   takeCharge(g, 1, 'Test');
   const c = clubNamed(g, 'Chelsea');
   while (g.day < 200) playDay(g);
-  // Chelsea's wages balloon: eight players on eight times their pay.
-  for (const id of c.playerIds.slice(0, 8)) g.players[id].wage *= 8;
+  // Chelsea's wages balloon: ten players on ten times their pay.
+  for (const id of c.playerIds.slice(0, 10)) g.players[id].wage *= 10;
   assert.ok(scrRatio(g, c) > scrRed(c), `ratio ${scrRatio(g, c).toFixed(2)}`);
   while (g.day < 214) playDay(g);
   assert.ok(c.finance.deduction >= 6, `deduction ${c.finance.deduction}`);

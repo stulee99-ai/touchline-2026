@@ -3,7 +3,7 @@ import { rememberFormer } from './scouting.js';
 import { isExtPlayer } from './ext.js';
 import {
   clubWage, contractYears, fmtMoney, fmtWage, M, niceMoney, niceWage, playerValue, spendingRule, squadCost, wageBill,
-  yearsLeft, expectedRevenue, SQUAD_COST_LIMIT, refreshWageBudget,
+  yearsLeft, expectedRevenue, SQUAD_COST_LIMIT, refreshWageBudget, usesScr, scrCosts, scrRevenue, scrWageAt, SCR_GREEN,
 } from './finance.js';
 import { addNews, club, dateOf, dayLabel, seasonOver, userClub } from './game.js';
 import { leagueCountry } from './levels.js';
@@ -108,6 +108,8 @@ export function askingPrice(state: GameState, p: Player, buyer: Club | null): nu
   if (p.age <= 21 && p.pa >= 165) ask *= 1.25;
   if (buyer && buyer.leagueId === seller.leagueId && Math.abs(buyer.reputation - seller.reputation) <= 1.5) ask *= 1.1;
   if (seller.finance.balance < 0) ask *= 0.9;
+  // A club from a much richer league doesn't need to sell cheaply to a poorer one.
+  if (buyer && expectedRevenue(state, seller) >= expectedRevenue(state, buyer) * 1.5 && seller.leagueId !== buyer.leagueId) ask *= 1.5;
   return niceMoney(ask);
 }
 
@@ -118,8 +120,12 @@ function ambitionOk(state: GameState, p: Player, buyer: Club): boolean {
   if (!ownerId) return true;
   const owner = club(state, ownerId);
   const from = owner.reputation;
+  // A first-teamer at a much richer club (on its wages) rarely takes the pay cut to move to a poorer one.
+  if (expectedRevenue(state, owner) >= expectedRevenue(state, buyer) * 1.6 && p.age < 29 && standing(state, p, owner) <= 1) return false;
   if (buyer.reputation >= from - 1) return true;
   if (p.age >= 30 && buyer.reputation >= from - 3) return true;
+  // A much richer club (the Premier League's money) can tempt him down a little.
+  if (expectedRevenue(state, buyer) >= expectedRevenue(state, owner) * 1.5 && buyer.reputation >= from - 2.5) return true;
   return standing(state, p, owner) >= 2 && buyer.reputation >= from - 3;
 }
 
@@ -1009,10 +1015,13 @@ function aiTryBuy(state: GameState, rng: Rng, c: Club, pool: Player[]): void {
   const lo = Math.max(need.ca + 3, need.level - 12);
   const hi = need.level + 14;
   const budget = f.transferBudget;
-  const room = f.wageBudget - wageBill(state, c.id);
+  // Premier League clubs plan wages against the Squad Cost Ratio (the green line), not a fixed budget.
+  const room = (usesScr(c) ? Math.max(f.wageBudget, scrWageAt(state, c, SCR_GREEN)) : f.wageBudget) - wageBill(state, c.id);
   const candidates: Player[] = [];
-  for (let i = 0; i < 260 && candidates.length < 12; i++) {
-    const p = pool[rng.int(0, pool.length - 1)];
+  // Scouts look at players of the right level for the position (not a random sweep of the whole world).
+  const fit = pool.filter((x) => x.ca >= lo && x.ca <= hi && (x.pos[need.pos] ?? 0) >= 16);
+  for (let i = 0; i < 120 && candidates.length < 12 && fit.length; i++) {
+    const p = fit[rng.int(0, fit.length - 1)];
     if (!p || p.clubId === c.id || p.loan || p.preContract || p.age > 32) continue;
     // Clubs don't sell players they've only just bought.
     if (p.clubId !== null && (p.joined >= state.season || (p.joined === state.season - 1 && rng.chance(0.6)))) continue;
@@ -1047,11 +1056,24 @@ function aiTryBuy(state: GameState, rng: Rng, c: Club, pool: Player[]): void {
   if (seller.leagueId === c.leagueId && seller.reputation >= 8.5 && c.reputation >= 8.5 && p.ca >= 145) return;
   const ask = askingPrice(state, p, c);
   if (ask > budget) return;
+  // Premier League clubs keep within the Squad Cost Ratio's green line (the odd ambitious one goes a little over).
+  if (usesScr(c) && scrAfter(state, c, ask, wage, contractYears(rng, p.age)) > SCR_GREEN + (c.reputation >= 8 ? 0.05 : 0)) return;
   // Key players rarely go, and only to bigger clubs.
   const st = standing(state, p, seller);
   const clause = p.releaseClause && ask >= p.releaseClause;
-  if (!clause && st <= 1 && (c.reputation <= seller.reputation || rng.chance(st === 0 ? 0.85 : 0.5))) return;
+  // Key players and regulars usually go only to bigger clubs, and not always then.
+  const richer = expectedRevenue(state, c) / Math.max(1, expectedRevenue(state, seller));
+  const bigger = c.reputation > seller.reputation + 0.5 || richer >= 1.5;
+  let yes = bigger ? (st === 0 ? 0.45 : 0.75) : st === 0 ? 0.08 : 0.25;
+  // A rich club doesn't need to sell its first-teamers to a poorer one.
+  if (richer < 0.6) yes *= 0.35;
+  if (!clause && st <= 1 && !rng.chance(yes)) return;
   completeTransfer(state, p, c, ask, wage, contractYears(rng, p.age));
+}
+
+/** A club's Squad Cost Ratio after a signing: his wages for a year and his fee spread over the contract. */
+function scrAfter(state: GameState, c: Club, fee: number, wage: number, years: number): number {
+  return (scrCosts(state, c) + wage * 52 + fee / Math.max(1, years)) / Math.max(1, scrRevenue(state, c));
 }
 
 /** Days since the player joined his present club (a long time if it isn't on record). */
@@ -1182,7 +1204,7 @@ export function marketDay(state: GameState, rng: Rng, intensity = 1): void {
   const busy = intensity * (deadline ? 2.5 : 1);
   for (const c of state.clubs) {
     if (c.id === me) continue;
-    if (rng.chance(0.08 * busy)) aiTryBuy(state, rng, c, pool);
+    if (rng.chance(0.13 * busy)) aiTryBuy(state, rng, c, pool);
     if (rng.chance(0.012 * busy) && c.reputation >= 6) aiLoanOut(state, rng, c);
     if (squadCount(c, state.players) > 30) aiTrim(state, c);
   }
@@ -1280,7 +1302,7 @@ export function transferDay(state: GameState, rng: Rng): void {
     windowSummary(state, windowOpenOn);
   }
   // Squads in the first summer are already the real, finished ones, so the AI is quieter.
-  if (open) marketDay(state, rng, state.day > 120 ? 0.4 : state.history.length === 0 ? 0.35 : state.day < 0 ? 0.35 : 1);
+  if (open) marketDay(state, rng, state.day > 120 ? 0.5 : state.history.length === 0 ? 0.35 : 1);
   freeAgentMarket(state, rng);
   // Free agents: clubs short of numbers pick them up any time.
   if (rng.chance(0.3)) {
@@ -1332,7 +1354,7 @@ function freeAgentMarket(state: GameState, rng: Rng): void {
     // The biggest club that wants him (with a little luck in who calls first).
     fits.sort((a, b) => b.reputation - a.reputation);
     const c = fits[rng.int(0, Math.min(2, fits.length - 1))];
-    const wage = niceWage(Math.min(wageDemand(state, p, c), p.wage * (p.age >= 31 ? 1 : 1.05)));
+    const wage = niceWage(Math.min(wageDemand(state, p, c), p.wage));
     const room = c.finance.wageBudget - wageBill(state, c.id);
     // A club stretches its wage budget for a bargain, but only so far.
     if (room < wage * 0.4) continue;

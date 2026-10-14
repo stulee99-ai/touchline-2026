@@ -1,3 +1,4 @@
+import { hashString } from './attributes.js';
 import { clamp, type Rng } from './rng.js';
 import type { Club, Finance, GameState, Ledger, Player } from './types.js';
 
@@ -31,17 +32,22 @@ interface LeagueMoney {
   wageRatio: [number, number];
   /** Cash reserves scale. */
   cash: number;
+  /**
+   * AI clubs' gross transfer spending in a season as a share of revenue. Premier League: about
+   * 40–45% (£2.6bn on £6.3bn in 2024/25, £3bn in summer 2025 alone); elsewhere roughly 20–40%.
+   */
+  transferShare?: number;
   /** Second tiers: how much of the Premier League-sized parachute a club relegated from the top flight gets. */
   parachute?: number;
 }
 
 export const LEAGUE_MONEY: Record<string, LeagueMoney> = {
-  ENG: { tvBase: 102 * M, tvRep: 3.5 * M, tvMin: 95 * M, merit: 56 * M, ticket: 48, commercial: 1.0, wages: 1.0, values: 1.15, wageRatio: [0.44, 0.6], cash: 1.0 },
-  ESP: { tvBase: 48 * M, tvRep: 12 * M, tvMin: 32 * M, merit: 24 * M, ticket: 36, commercial: 1.0, wages: 0.72, values: 1.0, wageRatio: [0.44, 0.62], cash: 0.6 },
-  GER: { tvBase: 44 * M, tvRep: 8 * M, tvMin: 28 * M, merit: 24 * M, ticket: 30, commercial: 0.95, wages: 0.7, values: 0.95, wageRatio: [0.42, 0.55], cash: 0.7 },
-  ITA: { tvBase: 36 * M, tvRep: 8 * M, tvMin: 24 * M, merit: 22 * M, ticket: 30, commercial: 0.8, wages: 0.65, values: 0.95, wageRatio: [0.5, 0.66], cash: 0.45 },
-  FRA: { tvBase: 14 * M, tvRep: 5 * M, tvMin: 8 * M, merit: 16 * M, ticket: 28, commercial: 0.75, wages: 0.6, values: 0.9, wageRatio: [0.52, 0.7], cash: 0.4 },
-  POR: { tvBase: 9 * M, tvRep: 3.5 * M, tvMin: 3 * M, merit: 7 * M, ticket: 18, commercial: 0.55, wages: 0.32, values: 0.8, wageRatio: [0.48, 0.66], cash: 0.3 },
+  ENG: { tvBase: 102 * M, tvRep: 3.5 * M, tvMin: 95 * M, merit: 56 * M, ticket: 48, commercial: 1.0, wages: 1.0, values: 1.15, wageRatio: [0.44, 0.6], cash: 1.0, transferShare: 0.5 },
+  ESP: { tvBase: 48 * M, tvRep: 12 * M, tvMin: 32 * M, merit: 24 * M, ticket: 36, commercial: 1.0, wages: 0.72, values: 1.0, wageRatio: [0.44, 0.62], cash: 0.6, transferShare: 0.18 },
+  GER: { tvBase: 44 * M, tvRep: 8 * M, tvMin: 28 * M, merit: 24 * M, ticket: 30, commercial: 0.95, wages: 0.7, values: 0.95, wageRatio: [0.42, 0.55], cash: 0.7, transferShare: 0.18 },
+  ITA: { tvBase: 36 * M, tvRep: 8 * M, tvMin: 24 * M, merit: 22 * M, ticket: 30, commercial: 0.8, wages: 0.65, values: 0.95, wageRatio: [0.5, 0.66], cash: 0.45, transferShare: 0.28 },
+  FRA: { tvBase: 14 * M, tvRep: 5 * M, tvMin: 8 * M, merit: 16 * M, ticket: 28, commercial: 0.75, wages: 0.6, values: 0.9, wageRatio: [0.52, 0.7], cash: 0.4, transferShare: 0.3 },
+  POR: { tvBase: 9 * M, tvRep: 3.5 * M, tvMin: 3 * M, merit: 7 * M, ticket: 18, commercial: 0.55, wages: 0.32, values: 0.8, wageRatio: [0.48, 0.66], cash: 0.3, transferShare: 0.22 },
   // The English pyramid below the Premier League: small TV money, wages that swallow most of the revenue.
   EN2: { tvBase: 8 * M, tvRep: 1.2 * M, tvMin: 5 * M, merit: 3 * M, ticket: 27, commercial: 0.5, wages: 1.0, values: 0.9, wageRatio: [0.62, 0.9], cash: 0.5, parachute: 1 },
   // Second divisions elsewhere in Europe.
@@ -289,9 +295,17 @@ export function setBudgets(state: GameState, c: Club): void {
   const revenue = expectedRevenue(state, c);
   const recent = f.history.slice(-2).reduce((s, h) => s + h.profit, 0);
   let budget = Math.max(0, f.balance) * 0.45 + revenue * 0.08 + Math.min(0, recent) * 0.25;
+  let ceiling = Math.max(0, f.balance);
+  if (c.id !== state.userClubId && !c.external) {
+    // AI clubs spend like real ones: a share of revenue each season (more in an ambitious year,
+    // less in a quiet one), backed by owners and borrowing beyond the cash in the bank.
+    const ambition = 0.75 + ((hashString(`ambition:${c.id}:${state.season}`) % 1000) / 1000) * 0.6;
+    budget = revenue * (money(c.leagueId).transferShare ?? 0.25) * ambition + Math.max(0, f.balance) * 0.15;
+    ceiling = Math.max(0, f.balance) + revenue * 0.25;
+  }
   // Over the Squad Cost Ratio's green line: the board hold back on transfers.
   if (usesScr(c) && scrRatio(state, c) > SCR_GREEN) budget *= 0.4;
-  f.transferBudget = niceMoney(clamp(budget, 0, Math.max(0, f.balance)));
+  f.transferBudget = niceMoney(clamp(budget, 0, ceiling));
   const bill = wageBill(state, c.id);
   // Last season's wage budget carries over (within the spending rule), so it doesn't fall back each summer.
   const kept = Math.min(f.wageBudget ?? 0, wageCap(state, c));

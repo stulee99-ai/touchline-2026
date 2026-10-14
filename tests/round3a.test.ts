@@ -154,18 +154,35 @@ test('Squad Cost Ratio: finishing over the green line costs a levy and allowance
   const g = newGame(10);
   takeCharge(g, g.clubs.find((c) => c.short === 'ARS')!.id, 'Test');
   const me = g.clubs[g.userClubId - 1];
-  g.season = 2027; // levies start in 2027/28
+  // The June test, on a season's accounts: 100% of revenue on the squad, in 2027/28 (levies start then).
   const rival = g.clubs.find((c) => c.name === 'Chelsea')!;
-  while (g.day < 0) playDay(g);
-  const target = F.scrWageAt(g, rival, 1.0); // about 100%: between the lines
-  const bill = F.wageBill(g, rival.id);
-  for (const id of rival.playerIds) g.players[id].wage *= target / bill;
+  const l = rival.finance.ledger;
+  Object.assign(l, { gate: 0, tv: 400e6, prize: 0, sponsorship: 0, merchandise: 0, wages: 300e6, amortisation: 100e6, saleProfit: 0, signing: 0 });
+  const cash = rival.finance.balance;
+  g.season = 2027;
+  const end = F.scrSeasonEnd(g, rival)!;
+  assert.ok(Math.abs(end.ratio - 1) < 0.01, `ratio ${end.ratio}`);
+  assert.equal(end.levy, 30e6, 'half of the £60m over the green line');
+  assert.equal(rival.finance.balance, cash - 30e6);
+  assert.ok(Math.abs(end.allowance - 0.15) < 0.001, 'allowance cut by the 15% overspend');
+  // Within the line next time: 10% back.
+  Object.assign(l, { wages: 200e6, amortisation: 50e6 });
+  assert.ok(Math.abs(F.scrSeasonEnd(g, rival)!.allowance - 0.25) < 0.001);
+  g.season = 2026;
+  // The manager's wage budget carries over into the new season.
   while (!seasonOver(g)) playDay(g);
   const budget = me.finance.wageBudget;
-  const cash = rival.finance.balance;
   startNewSeason(g);
-  assert.ok(rival.finance.balance < cash - 1e6 || rival.finance.history.at(-1)!.profit < 0, 'a levy was paid');
-  assert.ok((rival.finance.scrAllowance ?? 0.3) < 0.27, `allowance cut (${rival.finance.scrAllowance})`);
-  assert.equal(me.finance.scrAllowance ?? 0.3, 0.3);
   assert.ok(me.finance.wageBudget >= Math.min(budget, F.wageCap(g, me)) - 5000, `the budget carries over (${budget} -> ${me.finance.wageBudget})`);
+});
+
+test('AI spending: Premier League clubs budget about half their revenue for transfers; the manager\'s board use cash', async () => {
+  const F = await import('../src/engine/finance.js');
+  const g = newGame(12);
+  takeCharge(g, g.clubs.find((c) => c.short === 'ARS')!.id, 'Test');
+  const pl = g.clubs.filter((c) => c.leagueId === 'ENG' && c.id !== g.userClubId);
+  const share = pl.reduce((s, c) => s + c.finance.transferBudget, 0) / pl.reduce((s, c) => s + F.expectedRevenue(g, c), 0);
+  assert.ok(share > 0.35 && share < 0.75, `AI Premier League budgets ${Math.round(share * 100)}% of revenue`);
+  const me = g.clubs[g.userClubId - 1];
+  assert.ok(me.finance.transferBudget <= Math.max(0, me.finance.balance), 'the manager\'s budget stays within the cash in the bank');
 });

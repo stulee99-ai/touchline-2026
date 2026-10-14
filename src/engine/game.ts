@@ -1,6 +1,6 @@
 import { shiftAbility } from './attributes.js';
 import {
-  closeSeasonAccounts, fmtMoney, fmtWage, meritPayment, monthlyAccounts, recordGate, scrMarchTest, scrSeasonEnd, SCR_GREEN, usesScr, setBudgets, spendingRule, refreshWageBudget,
+  closeSeasonAccounts, fmtMoney, fmtWage, meritPayment, monthlyAccounts, recordGate, scrMarchTest, scrSeasonEnd, SCR_GREEN, usesScr, setBudgets, spendingRule,
 } from './finance.js';
 import { assignSquadNumbers, createPlayer, emptyStats, fillSquad, giveContract, rollPotential, scheduleSeason } from './generate.js';
 import { internationalDay, intlSummer, newIntlSeason } from './intl.js';
@@ -1013,7 +1013,8 @@ export function takeCharge(state: GameState, clubId: number, managerName: string
   const rng = new Rng(state.rngState ^ (clubId * 7919));
   initScouting(state, rng);
   initAssistant(state, rng);
-  refreshWageBudget(state, c);
+  // The board set the manager's budgets their own way (AI clubs spend a share of revenue).
+  setBudgets(state, c);
   const target = boardExpectation(state, clubId);
   const first = userNextFixture(state);
   addNews(state, {
